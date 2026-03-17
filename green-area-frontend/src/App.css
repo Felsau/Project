@@ -36,3 +36,12 @@ body {
   background-color: #111811;
   font-size: 0.9rem;
 }
+
+.province-tooltip {
+  background-color: #111811;
+  color: #4ade80;
+  border: 1px solid #1e2e1e;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+}
