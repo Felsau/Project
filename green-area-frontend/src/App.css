@@ -97,3 +97,86 @@ body {
   font-size: 0.85rem;
   padding: 4px 8px;
 }
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mock-badge {
+  background-color: #1e2e1e;
+  color: #7a9e7e;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid #2a3e2a;
+  white-space: nowrap;
+}
+
+.stat-card {
+  background-color: #172017;
+  border: 1px solid #1e2e1e;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.stat-label {
+  color: #7a9e7e;
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  color: #4ade80;
+  font-size: 2rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.stat-desc {
+  color: #7a9e7e;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.stat-row {
+  display: flex;
+  gap: 8px;
+}
+
+.stat-card-sm {
+  flex: 1;
+  background-color: #172017;
+  border: 1px solid #1e2e1e;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.stat-value-sm {
+  color: #4ade80;
+  font-size: 1rem;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+.chart-section {
+  background-color: #172017;
+  border: 1px solid #1e2e1e;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.chart-title {
+  color: #7a9e7e;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+
+.data-note {
+  color: #3d5c3d;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  text-align: center;
+}

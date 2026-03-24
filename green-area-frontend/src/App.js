@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
 
@@ -8,6 +9,46 @@ const THAILAND_BOUNDS = [
   [5.5, 97.5],
   [20.5, 105.7],
 ];
+
+// Mock NDVI รายเดือน (ค่าจริงจะดึงจาก Google Earth Engine ภายหลัง)
+const MOCK_NDVI_MONTHLY = [
+  { month: 'ม.ค.', ndvi: 0.42 },
+  { month: 'ก.พ.', ndvi: 0.38 },
+  { month: 'มี.ค.', ndvi: 0.35 },
+  { month: 'เม.ย.', ndvi: 0.33 },
+  { month: 'พ.ค.', ndvi: 0.48 },
+  { month: 'มิ.ย.', ndvi: 0.61 },
+  { month: 'ก.ค.', ndvi: 0.68 },
+  { month: 'ส.ค.', ndvi: 0.72 },
+  { month: 'ก.ย.', ndvi: 0.70 },
+  { month: 'ต.ค.', ndvi: 0.65 },
+  { month: 'พ.ย.', ndvi: 0.55 },
+  { month: 'ธ.ค.', ndvi: 0.46 },
+];
+
+// Mock สถิติพื้นที่สีเขียว
+const MOCK_STATS = {
+  ndvi_avg: 0.53,
+  green_area_percent: 61.4,
+  forest_area_km2: 4823,
+  urban_area_km2: 312,
+};
+
+// สีของ bar ตามค่า NDVI
+const getNdviColor = (value) => {
+  if (value >= 0.6) return '#22c55e';
+  if (value >= 0.45) return '#4ade80';
+  if (value >= 0.3) return '#86efac';
+  return '#bbf7d0';
+};
+
+// แปลค่า NDVI เป็นคำอธิบาย
+const getNdviLabel = (value) => {
+  if (value >= 0.6) return 'พืชพรรณหนาแน่นมาก';
+  if (value >= 0.45) return 'พืชพรรณหนาแน่น';
+  if (value >= 0.3) return 'พืชพรรณปานกลาง';
+  return 'พืชพรรณน้อย';
+};
 
 function App() {
   const [thailandData, setThailandData] = useState(null);
@@ -29,7 +70,6 @@ function App() {
       });
   }, []);
 
-  // style ปกติ
   const defaultStyle = {
     color: '#4ade80',
     weight: 1.5,
@@ -38,14 +78,12 @@ function App() {
     fillOpacity: 0.15,
   };
 
-  // style hover
   const hoverStyle = {
     color: '#4ade80',
     weight: 2.5,
     fillOpacity: 0.35,
   };
 
-  // style เมื่อถูกเลือก
   const selectedStyle = {
     color: '#ffffff',
     weight: 3,
@@ -54,52 +92,43 @@ function App() {
   };
 
   const onEachProvince = (feature, layer) => {
-  const name = feature.properties.name || 'ไม่ทราบชื่อ';
+    const name = feature.properties.name || 'ไม่ทราบชื่อ';
 
-  layer.bindTooltip(name, {
-    permanent: false,
-    direction: 'center',
-    className: 'province-tooltip',
-  });
+    layer.bindTooltip(name, {
+      permanent: false,
+      direction: 'center',
+      className: 'province-tooltip',
+    });
 
-  layer.on({
-    mouseover: (e) => {
-      if (selectedLayerRef.current !== e.target) {
-        e.target.setStyle(hoverStyle);
-      }
-    },
-    mouseout: (e) => {
-      // ← เพิ่ม check ว่าเป็น selected layer ไหม ถ้าใช่ไม่ต้อง reset
-      if (selectedLayerRef.current !== e.target) {
-        e.target.setStyle(defaultStyle);
-      } else {
-        e.target.setStyle(selectedStyle); // ← คง selected style ไว้
-      }
-    },
-    click: (e) => {
-      const map = mapRef.current;
+    layer.on({
+      mouseover: (e) => {
+        if (selectedLayerRef.current !== e.target) {
+          e.target.setStyle(hoverStyle);
+        }
+      },
+      mouseout: (e) => {
+        if (selectedLayerRef.current !== e.target) {
+          e.target.setStyle(defaultStyle);
+        } else {
+          e.target.setStyle(selectedStyle);
+        }
+      },
+      click: (e) => {
+        const map = mapRef.current;
+        if (selectedLayerRef.current === e.target) return;
+        if (selectedLayerRef.current) {
+          selectedLayerRef.current.setStyle(defaultStyle);
+        }
+        e.target.setStyle(selectedStyle);
+        selectedLayerRef.current = e.target;
+        setSelectedProvince(name);
+        if (map) {
+          map.fitBounds(e.target.getBounds(), { padding: [40, 40] });
+        }
+      },
+    });
+  };
 
-      // ถ้าคลิก layer เดิมที่เลือกอยู่แล้ว ไม่ต้องทำอะไร
-      if (selectedLayerRef.current === e.target) return;
-
-      // รีเซ็ต style ของจังหวัดก่อนหน้า
-      if (selectedLayerRef.current) {
-        selectedLayerRef.current.setStyle(defaultStyle);
-      }
-
-      // เซ็ต style ของจังหวัดที่คลิก
-      e.target.setStyle(selectedStyle);
-      selectedLayerRef.current = e.target;
-      setSelectedProvince(name);
-
-      if (map) {
-        map.fitBounds(e.target.getBounds(), { padding: [40, 40] });
-      }
-    },
-  });
-};
-
-  // รีเซ็ตกลับมาดูทั้งประเทศ
   const handleReset = () => {
     if (selectedLayerRef.current) {
       selectedLayerRef.current.setStyle(defaultStyle);
@@ -117,7 +146,6 @@ function App() {
       {loading && <p className="loading-text">กำลังโหลดข้อมูล...</p>}
 
       <div className="main-layout">
-        {/* แผนที่ */}
         <MapContainer
           center={THAILAND_CENTER}
           zoom={6}
@@ -146,11 +174,70 @@ function App() {
         <div className="sidebar">
           {selectedProvince ? (
             <>
-              <h2 className="sidebar-title">📍 จังหวัดที่เลือก</h2>
-              <p className="sidebar-province">{selectedProvince}</p>
-              <p className="sidebar-hint">
-                ข้อมูล NDVI และพื้นที่สีเขียว<br />จะแสดงที่นี่ในอนาคต
+              <div className="sidebar-header">
+                <h2 className="sidebar-title">📍 {selectedProvince}</h2>
+                <span className="mock-badge">Mock Data</span>
+              </div>
+
+              {/* ค่า NDVI เฉลี่ย */}
+              <div className="stat-card">
+                <p className="stat-label">ค่า NDVI เฉลี่ยรายปี</p>
+                <p className="stat-value">{MOCK_STATS.ndvi_avg}</p>
+                <p className="stat-desc">{getNdviLabel(MOCK_STATS.ndvi_avg)}</p>
+              </div>
+
+              {/* สถิติพื้นที่ */}
+              <div className="stat-row">
+                <div className="stat-card-sm">
+                  <p className="stat-label">พื้นที่สีเขียว</p>
+                  <p className="stat-value-sm">{MOCK_STATS.green_area_percent}%</p>
+                </div>
+                <div className="stat-card-sm">
+                  <p className="stat-label">ป่าไม้</p>
+                  <p className="stat-value-sm">{MOCK_STATS.forest_area_km2.toLocaleString()} km²</p>
+                </div>
+              </div>
+
+              {/* กราฟ NDVI รายเดือน */}
+              <div className="chart-section">
+                <p className="chart-title">📊 NDVI รายเดือน</p>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={MOCK_NDVI_MONTHLY} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fill: '#7a9e7e', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={[0, 1]}
+                      tick={{ fill: '#7a9e7e', fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#111811',
+                        border: '1px solid #1e2e1e',
+                        borderRadius: '6px',
+                        color: '#4ade80',
+                        fontSize: '12px',
+                      }}
+                      formatter={(value) => [value.toFixed(2), 'NDVI']}
+                    />
+                    <Bar dataKey="ndvi" radius={[3, 3, 0, 0]}>
+                      {MOCK_NDVI_MONTHLY.map((entry, index) => (
+                        <Cell key={index} fill={getNdviColor(entry.ndvi)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <p className="data-note">
+                * ข้อมูลจำลอง ค่าจริงจะดึงจาก<br />Sentinel-2 ผ่าน Google Earth Engine
               </p>
+
               <button className="reset-btn" onClick={handleReset}>
                 ← กลับดูทั้งประเทศ
               </button>
