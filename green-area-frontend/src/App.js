@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
+import * as turf from '@turf/turf';
 
 const THAILAND_CENTER = [13.0, 101.0];
 const THAILAND_BOUNDS = [
@@ -54,21 +55,24 @@ function App() {
   const [thailandData, setThailandData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedProvince, setSelectedProvince] = useState(null);
+  const [provinceArea, setProvinceArea] = useState(null); // ← เพิ่ม
   const mapRef = useRef(null);
   const selectedLayerRef = useRef(null);
 
-  useEffect(() => {
-    fetch('/thailand.json')
-      .then((res) => res.json())
-      .then((data) => {
-        setThailandData(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('โหลดข้อมูลไม่สำเร็จ:', err);
-        setLoading(false);
-      });
-  }, []);
+  const fetchNDVI = async (provinceName) => {
+  try {
+    const [statsRes, monthlyRes] = await Promise.all([
+      fetch(`http://localhost:8000/ndvi/${provinceName}`),
+      fetch(`http://localhost:8000/ndvi/${provinceName}/monthly`)
+    ]);
+    const stats = await statsRes.json();
+    const monthly = await monthlyRes.json();
+    setNdviStats(stats);
+    setNdviMonthly(monthly.monthly.filter(m => m.ndvi !== null));
+  } catch (err) {
+    console.error('ดึงข้อมูล NDVI ไม่สำเร็จ:', err);
+  }
+  };
 
   const defaultStyle = {
     color: '#4ade80',
@@ -114,7 +118,7 @@ function App() {
         }
       },
       click: (e) => {
-        const map = mapRef.current;
+  const map = mapRef.current;
         if (selectedLayerRef.current === e.target) return;
         if (selectedLayerRef.current) {
           selectedLayerRef.current.setStyle(defaultStyle);
@@ -122,6 +126,11 @@ function App() {
         e.target.setStyle(selectedStyle);
         selectedLayerRef.current = e.target;
         setSelectedProvince(name);
+
+        // ← เพิ่มส่วนนี้ — คำนวณพื้นที่จังหวัดด้วย Turf.js
+        const areaKm2 = turf.area(feature) / 1_000_000; // แปลง m² → km²
+        setProvinceArea(areaKm2.toFixed(2));
+
         if (map) {
           map.fitBounds(e.target.getBounds(), { padding: [40, 40] });
         }
@@ -144,6 +153,36 @@ function App() {
     <div className="App">
       <h1 className="App-title">🌿 ระบบวิเคราะห์พื้นที่สีเขียว — ประเทศไทย</h1>
       {loading && <p className="loading-text">กำลังโหลดข้อมูล...</p>}
+
+      <div className="stat-grid">
+  {/* ← เพิ่ม card นี้ */}
+  <div className="stat-item" style={{ gridColumn: 'span 2' }}>
+    <span className="stat-item-label">พื้นที่จังหวัด (จาก GeoJSON)</span>
+    <span className="stat-item-value">
+      {provinceArea ? `${Number(provinceArea).toLocaleString()} km²` : '—'}
+    </span>
+    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+      คำนวณด้วย Turf.js · ข้อมูลจริง
+    </span>
+  </div>
+
+  <div className="stat-item">
+    <span className="stat-item-label">พื้นที่สีเขียว</span>
+    <span className="stat-item-value">{MOCK_STATS.green_area_percent}%</span>
+  </div>
+  <div className="stat-item">
+    <span className="stat-item-label">ป่าไม้ (mock)</span>
+    <span className="stat-item-value">{MOCK_STATS.forest_area_km2.toLocaleString()} km²</span>
+  </div>
+  <div className="stat-item">
+    <span className="stat-item-label">พื้นที่เมือง (mock)</span>
+    <span className="stat-item-value">{MOCK_STATS.urban_area_km2} km²</span>
+  </div>
+  <div className="stat-item">
+    <span className="stat-item-label">ปี</span>
+    <span className="stat-item-value">2024</span>
+  </div>
+</div>
 
       <div className="main-layout">
         <MapContainer
