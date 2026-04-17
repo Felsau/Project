@@ -11,6 +11,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===== Cache เก็บผลที่เคยคำนวณแล้ว =====
+ndvi_cache = {}        # { "Phayao_2024": { ndvi_mean, ndvi_min, ndvi_max } }
+monthly_cache = {}     # { "Phayao_2024": [ {month, ndvi}, ... ] }
+
 # ===== เริ่มต้น GEE =====
 try:
     ee.Initialize(project='innate-beacon-483307-v1')
@@ -36,12 +40,29 @@ def mask_s2_clouds(image):
 # ===== API: ทดสอบ =====
 @app.get("/")
 def read_root():
-    return {"message": "Green Area API is running! 🌿"}
+    return {
+        "message": "Green Area API is running! 🌿",
+        "cached_provinces": list(ndvi_cache.keys())
+    }
 
 
-# ===== API: ดึง NDVI รายเดือน ← ต้องอยู่ก่อน route รายปี =====
+# ===== API: ดึง NDVI รายเดือน =====
 @app.get("/ndvi/{province_name}/monthly")
 def get_ndvi_monthly(province_name: str, year: int = 2024):
+    cache_key = f"{province_name}_{year}"
+
+    # ← ถ้ามี cache แล้ว ตอบกลับทันที
+    if cache_key in monthly_cache:
+        print(f"✅ Cache hit: {cache_key}/monthly")
+        return {
+            "province": province_name,
+            "year": year,
+            "monthly": monthly_cache[cache_key],
+            "from_cache": True
+        }
+
+    print(f"⏳ Computing: {cache_key}/monthly")
+
     try:
         province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
             .filter(ee.Filter.eq('ADM1_NAME', province_name))
@@ -74,7 +95,6 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
                     maxPixels=1e10,
                     bestEffort=True
                 ).getInfo()
-                # ← key คือ 'NDVI' ตามที่ rename ไว้
                 raw = stats.get('NDVI', None)
                 ndvi_val = round(raw, 4) if raw is not None else None
             else:
@@ -87,19 +107,33 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
                 "image_count": count
             })
 
+        # ← เก็บลง cache
+        monthly_cache[cache_key] = results
+        print(f"✅ Cached: {cache_key}/monthly")
+
         return {
             "province": province_name,
             "year": year,
-            "monthly": results
+            "monthly": results,
+            "from_cache": False
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ===== API: ดึง NDVI รายปี ← อยู่หลัง monthly =====
+# ===== API: ดึง NDVI รายปี =====
 @app.get("/ndvi/{province_name}")
 def get_ndvi(province_name: str, year: int = 2024):
+    cache_key = f"{province_name}_{year}"
+
+    # ← ถ้ามี cache แล้ว ตอบกลับทันที
+    if cache_key in ndvi_cache:
+        print(f"✅ Cache hit: {cache_key}")
+        return {**ndvi_cache[cache_key], "from_cache": True}
+
+    print(f"⏳ Computing: {cache_key}")
+
     try:
         province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
             .filter(ee.Filter.eq('ADM1_NAME', province_name))
@@ -112,7 +146,6 @@ def get_ndvi(province_name: str, year: int = 2024):
               .median()
               .clip(province))
 
-        # ← rename ให้ชัดเจน
         ndvi = s2.normalizedDifference(['B8', 'B4']).rename('NDVI')
 
         stats = ndvi.reduceRegion(
@@ -125,19 +158,28 @@ def get_ndvi(province_name: str, year: int = 2024):
             bestEffort=True
         ).getInfo()
 
-        # ← แก้ key ให้ถูกต้องหลัง rename เป็น NDVI
-        print("GEE stats keys:", stats.keys())  # debug ดู key จริง
-        ndvi_mean = stats.get('NDVI_mean') or stats.get('NDVI') or 0
-        ndvi_min  = stats.get('NDVI_min')  or 0
-        ndvi_max  = stats.get('NDVI_max')  or 0
-
-        return {
+        result = {
             "province": province_name,
             "year": year,
-            "ndvi_mean": round(ndvi_mean, 4),
-            "ndvi_min":  round(ndvi_min, 4),
-            "ndvi_max":  round(ndvi_max, 4),
+            "ndvi_mean": round(stats.get('NDVI_mean') or 0, 4),
+            "ndvi_min":  round(stats.get('NDVI_min')  or 0, 4),
+            "ndvi_max":  round(stats.get('NDVI_max')  or 0, 4),
+            "from_cache": False
         }
+
+        # ← เก็บลง cache
+        ndvi_cache[cache_key] = result
+        print(f"✅ Cached: {cache_key}")
+
+        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== API: ล้าง cache (ใช้ตอน debug) =====
+@app.delete("/cache")
+def clear_cache():
+    ndvi_cache.clear()
+    monthly_cache.clear()
+    return {"message": "Cache cleared"}
