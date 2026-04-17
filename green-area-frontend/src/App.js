@@ -136,142 +136,133 @@ function App() {
 
   return (
     <div className="App">
-      <header className="app-header">
-        <div className="header-left">
-          <div className="header-dot" />
+      {/* ส่วนหัวของแอป สไตล์ GEE (สีขาว-เทา) */}
+      <header className="app-header App-title">
+        <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div>
-            <div className="header-title">Green Area Analysis</div>
-            <div className="header-subtitle">ระบบวิเคราะห์พื้นที่สีเขียว · ประเทศไทย</div>
+            <div className="header-title" style={{ fontSize: '1.2rem', fontWeight: '500', color: '#202124' }}>
+              Green Area Analysis
+            </div>
+            <div className="header-subtitle" style={{ fontSize: '0.85rem', color: '#5f6368' }}>
+              ระบบวิเคราะห์พื้นที่สีเขียว · ประเทศไทย
+            </div>
           </div>
         </div>
-        <div className="header-status">
+        <div className="header-status" style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.8rem', color: '#5f6368' }}>
           <span>SRC</span>
-          <span className="status-live">SENTINEL-2 · GEE</span>
+          <span className="status-live mock-badge" style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', border: 'none', fontWeight: '500' }}>
+            SENTINEL-2 · GEE
+          </span>
         </div>
       </header>
 
-      {loading && <div className="loading-bar" />}
+      {loading && <div className="loading-bar" style={{ height: '3px', backgroundColor: '#1a73e8', width: '100%', animation: 'loading 2s infinite' }} />}
 
       <div className="main-layout">
-        <MapContainer
-          center={THAILAND_CENTER}
-          zoom={6} minZoom={6} maxZoom={18}
-          maxBounds={THAILAND_BOUNDS}
-          maxBoundsViscosity={1.0}
-          className="map-container"
-          ref={mapRef}
-          doubleClickZoom={false}
-        >
-          <TileLayer
-            attribution='&copy; OpenStreetMap'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          />
-          {thailandData && (
-            <GeoJSON data={thailandData} style={defaultStyle} onEachFeature={onEachProvince} />
-          )}
-        </MapContainer>
-
-        {/* Sidebar */}
-        <div className="sidebar">
+        
+        {/* เลื่อน Sidebar ขึ้นมาอยู่ด้านบนในโค้ด เพื่อให้อยู่ฝั่งซ้ายมือตาม CSS */}
+        <aside className="sidebar">
           {!selectedProvince ? (
-            <div className="sidebar-empty">
-              <div className="sidebar-empty-icon">🛰️</div>
-              <div className="sidebar-empty-title">เลือกพื้นที่</div>
-              <p className="sidebar-empty-hint">
+            <div className="sidebar-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', color: '#5f6368' }}>
+              <div className="sidebar-empty-icon" style={{ fontSize: '2rem', marginBottom: '12px' }}>🛰️</div>
+              <div className="sidebar-empty-title" style={{ fontSize: '1.1rem', fontWeight: '500', color: '#202124', marginBottom: '8px' }}>เลือกพื้นที่</div>
+              <p className="sidebar-empty-hint" style={{ fontSize: '0.85rem', lineHeight: '1.6' }}>
                 คลิกที่จังหวัดบนแผนที่<br />เพื่อดูข้อมูล NDVI<br />และพื้นที่สีเขียว
               </p>
             </div>
           ) : (
-            <div className="sidebar-content">
+            <div className="sidebar-content" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
               {/* Province Header */}
-              <div className="sidebar-section">
-                <div className="province-header">
-                  <span className="province-label">Selected Province</span>
-                  <div className="province-name">{selectedProvince}</div>
-                  <span className="mock-badge">
-                    {ndviLoading ? '⏳ กำลังโหลด...' : ndviStats ? '✅ GEE Data' : '⚠ Mock'}
-                  </span>
+              <div className="sidebar-header">
+                <div>
+                  <span className="sidebar-title">Selected Province</span>
+                  <div className="sidebar-province">{selectedProvince}</div>
                 </div>
+                <span className="mock-badge" style={ndviStats ? { backgroundColor: '#e6f4ea', color: '#137333', borderColor: '#ceead6' } : {}}>
+                  {ndviLoading ? '⏳ Loading...' : ndviStats ? '✅ GEE Data' : '⚠ Mock'}
+                </span>
               </div>
 
-              {/* NDVI Main */}
-              <div className="sidebar-section">
-                <div className="ndvi-main">
-                  <span className="ndvi-label">NDVI · Annual Average</span>
-                  {ndviLoading ? (
-                    <p className="ndvi-desc">กำลังดึงข้อมูลจาก GEE...</p>
-                  ) : (
-                    <>
-                      <div className="ndvi-value-row">
-                        <span className="ndvi-value">
-                          {ndviStats ? ndviStats.ndvi_mean : '—'}
-                        </span>
-                        <span className="ndvi-desc">
-                          {ndviStats ? getNdviLabel(ndviStats.ndvi_mean) : ''}
-                        </span>
-                      </div>
-                      <div className="ndvi-bar-track">
-                        <div
-                          className="ndvi-bar-fill"
-                          style={{ width: `${((ndviStats?.ndvi_mean || 0) * 100).toFixed(0)}%` }}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+              {/* NDVI Main Card */}
+              <div className="stat-card">
+                <div className="stat-label">NDVI · Annual Average</div>
+                {ndviLoading ? (
+                  <p className="stat-desc">กำลังดึงข้อมูลจาก GEE...</p>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                      <span className="stat-value">
+                        {ndviStats ? ndviStats.ndvi_mean : '—'}
+                      </span>
+                      <span className="stat-desc">
+                        {ndviStats ? getNdviLabel(ndviStats.ndvi_mean) : ''}
+                      </span>
+                    </div>
+                    {/* แถบ Progress Bar สว่างๆ */}
+                    <div className="ndvi-bar-track" style={{ height: '6px', backgroundColor: '#f1f3f4', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
+                      <div
+                        className="ndvi-bar-fill"
+                        style={{ 
+                          height: '100%', 
+                          backgroundColor: '#1e8e3e', 
+                          width: `${((ndviStats?.ndvi_mean || 0) * 100).toFixed(0)}%`,
+                          transition: 'width 0.5s ease'
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Stats Grid */}
-              <div className="sidebar-section">
-                <div className="stat-grid">
-                  <div className="stat-item" style={{ gridColumn: 'span 2' }}>
-                    <span className="stat-item-label">พื้นที่จังหวัด (Turf.js)</span>
-                    <span className="stat-item-value">
-                      {provinceArea ? `${Number(provinceArea).toLocaleString()} km²` : '—'}
-                    </span>
+              <div className="stat-row" style={{ flexWrap: 'wrap' }}>
+                <div className="stat-card-sm" style={{ flexBasis: '100%' }}>
+                  <div className="stat-label">พื้นที่จังหวัด (Turf.js)</div>
+                  <div className="stat-value-sm" style={{ color: '#202124' }}>
+                    {provinceArea ? `${Number(provinceArea).toLocaleString()} km²` : '—'}
                   </div>
-                  <div className="stat-item">
-                    <span className="stat-item-label">NDVI Min</span>
-                    <span className="stat-item-value">
-                      {ndviStats ? ndviStats.ndvi_min : '—'}
-                    </span>
+                </div>
+                <div className="stat-card-sm">
+                  <div className="stat-label">NDVI Min</div>
+                  <div className="stat-value-sm" style={{ color: '#d93025' }}>
+                    {ndviStats ? ndviStats.ndvi_min : '—'}
                   </div>
-                  <div className="stat-item">
-                    <span className="stat-item-label">NDVI Max</span>
-                    <span className="stat-item-value">
-                      {ndviStats ? ndviStats.ndvi_max : '—'}
-                    </span>
+                </div>
+                <div className="stat-card-sm">
+                  <div className="stat-label">NDVI Max</div>
+                  <div className="stat-value-sm">
+                    {ndviStats ? ndviStats.ndvi_max : '—'}
                   </div>
                 </div>
               </div>
 
-              {/* Chart */}
-              <div className="sidebar-section">
-                <div className="chart-header">NDVI · Monthly Trend</div>
+              {/* Chart Section */}
+              <div className="chart-section">
+                <div className="chart-title">NDVI · Monthly Trend</div>
                 {ndviLoading ? (
                   <p className="data-note">กำลังคำนวณ NDVI รายเดือน...</p>
                 ) : ndviMonthly.length > 0 ? (
                   <ResponsiveContainer width="100%" height={150}>
-                    <BarChart data={ndviMonthly} margin={{ top: 4, right: 0, left: -28, bottom: 0 }}>
+                    <BarChart data={ndviMonthly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <XAxis
                         dataKey="month"
-                        tick={{ fill: '#3a5c3a', fontSize: 9, fontFamily: 'DM Mono' }}
-                        axisLine={false} tickLine={false}
+                        tick={{ fill: '#5f6368', fontSize: 10 }}
+                        axisLine={{ stroke: '#dadce0' }} tickLine={false}
                       />
                       <YAxis
                         domain={[0, 1]}
-                        tick={{ fill: '#3a5c3a', fontSize: 9, fontFamily: 'DM Mono' }}
-                        axisLine={false} tickLine={false}
+                        tick={{ fill: '#5f6368', fontSize: 10 }}
+                        axisLine={{ stroke: '#dadce0' }} tickLine={false}
                       />
                       <Tooltip
                         contentStyle={{
-                          backgroundColor: '#0d160d', border: '1px solid #1a2e1a',
-                          borderRadius: '6px', color: '#4ade80',
-                          fontSize: '11px', fontFamily: 'DM Mono',
+                          backgroundColor: '#ffffff', border: '1px solid #dadce0',
+                          borderRadius: '4px', color: '#202124',
+                          fontSize: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                         }}
                         formatter={(value) => [value?.toFixed(3), 'NDVI']}
-                        cursor={{ fill: 'rgba(74,222,128,0.05)' }}
+                        cursor={{ fill: '#f1f3f4' }}
                       />
                       <Bar dataKey="ndvi" radius={[2, 2, 0, 0]}>
                         {ndviMonthly.map((entry, i) => (
@@ -283,19 +274,16 @@ function App() {
                 ) : (
                   <p className="data-note">ไม่มีข้อมูลรายเดือน</p>
                 )}
-              </div>
-
-              {/* Note */}
-              <div className="sidebar-section">
-                <p className="data-note">
+                
+                <p className="data-note" style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f1f3f4' }}>
                   {ndviStats
-                    ? '* ข้อมูลจาก Sentinel-2\nผ่าน Google Earth Engine'
+                    ? '* ข้อมูลจาก Sentinel-2 ผ่าน Google Earth Engine'
                     : '* กำลังรอข้อมูลจาก GEE'}
                 </p>
               </div>
 
-              {/* Reset */}
-              <div className="sidebar-section">
+              {/* Reset Button */}
+              <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
                 <button className="reset-btn" onClick={handleReset}>
                   ← กลับดูทั้งประเทศ
                 </button>
@@ -303,7 +291,29 @@ function App() {
 
             </div>
           )}
-        </div>
+        </aside>
+
+        {/* แผนที่ย้ายมาอยู่ด้านล่างในโค้ด เพื่อให้อยู่ฝั่งขวามือ */}
+        <MapContainer
+          center={THAILAND_CENTER}
+          zoom={6} minZoom={6} maxZoom={18}
+          maxBounds={THAILAND_BOUNDS}
+          maxBoundsViscosity={1.0}
+          className="map-container"
+          ref={mapRef}
+          doubleClickZoom={false}
+          style={{ backgroundColor: '#e3e6e8' }} // ป้องกันแผนที่ดำตอนโหลด
+        >
+          {/* แนะนำให้เปลี่ยน TileLayer เป็นแบบสว่างเพื่อให้เข้ากับ UI นะครับ */}
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          />
+          {thailandData && (
+            <GeoJSON data={thailandData} style={defaultStyle} onEachFeature={onEachProvince} />
+          )}
+        </MapContainer>
+
       </div>
     </div>
   );
