@@ -39,50 +39,7 @@ def read_root():
     return {"message": "Green Area API is running! 🌿"}
 
 
-# ===== API: ดึง NDVI รายปี =====
-@app.get("/ndvi/{province_name}")
-def get_ndvi(province_name: str, year: int = 2024):
-    try:
-        # กำหนดพื้นที่
-        province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
-            .filter(ee.Filter.eq('ADM1_NAME', province_name))
-
-        # ดึงภาพ Sentinel-2
-        s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-              .filterBounds(province)
-              .filterDate(f'{year}-01-01', f'{year}-12-31')
-              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-              .map(mask_s2_clouds)
-              .median()
-              .clip(province))
-
-        # คำนวณ NDVI
-        ndvi = s2.normalizedDifference(['B8', 'B4'])
-
-        # คำนวณสถิติ
-        stats = ndvi.reduceRegion(
-            reducer=ee.Reducer.mean()
-                    .combine(ee.Reducer.min(), '', True)
-                    .combine(ee.Reducer.max(), '', True),
-            geometry=province.geometry(),
-            scale=500,
-            maxPixels=1e10,
-            bestEffort=True
-        ).getInfo()
-
-        return {
-            "province": province_name,
-            "year": year,
-            "ndvi_mean": round(stats.get('nd_mean', 0), 4),
-            "ndvi_min":  round(stats.get('nd_min', 0), 4),
-            "ndvi_max":  round(stats.get('nd_max', 0), 4),
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ===== API: ดึง NDVI รายเดือน =====
+# ===== API: ดึง NDVI รายเดือน ← ต้องอยู่ก่อน route รายปี =====
 @app.get("/ndvi/{province_name}/monthly")
 def get_ndvi_monthly(province_name: str, year: int = 2024):
     try:
@@ -91,8 +48,8 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
 
         results = []
         month_names = [
-            'ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.',
-            'ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'
+            'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+            'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
         ]
 
         for m in range(1, 13):
@@ -107,8 +64,9 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
 
             if count > 0:
                 ndvi_monthly = (col.median()
-                                  .normalizedDifference(['B8', 'B4'])
-                                  .clip(province))
+                                .normalizedDifference(['B8', 'B4'])
+                                .rename('NDVI')
+                                .clip(province))
                 stats = ndvi_monthly.reduceRegion(
                     reducer=ee.Reducer.mean(),
                     geometry=province.geometry(),
@@ -116,7 +74,9 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
                     maxPixels=1e10,
                     bestEffort=True
                 ).getInfo()
-                ndvi_val = round(stats.get('nd', 0) or 0, 4)
+                # ← key คือ 'NDVI' ตามที่ rename ไว้
+                raw = stats.get('NDVI', None)
+                ndvi_val = round(raw, 4) if raw is not None else None
             else:
                 ndvi_val = None
 
@@ -131,6 +91,52 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
             "province": province_name,
             "year": year,
             "monthly": results
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== API: ดึง NDVI รายปี ← อยู่หลัง monthly =====
+@app.get("/ndvi/{province_name}")
+def get_ndvi(province_name: str, year: int = 2024):
+    try:
+        province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
+            .filter(ee.Filter.eq('ADM1_NAME', province_name))
+
+        s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+              .filterBounds(province)
+              .filterDate(f'{year}-01-01', f'{year}-12-31')
+              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+              .map(mask_s2_clouds)
+              .median()
+              .clip(province))
+
+        # ← rename ให้ชัดเจน
+        ndvi = s2.normalizedDifference(['B8', 'B4']).rename('NDVI')
+
+        stats = ndvi.reduceRegion(
+            reducer=ee.Reducer.mean()
+                    .combine(ee.Reducer.min(), '', True)
+                    .combine(ee.Reducer.max(), '', True),
+            geometry=province.geometry(),
+            scale=500,
+            maxPixels=1e10,
+            bestEffort=True
+        ).getInfo()
+
+        # ← แก้ key ให้ถูกต้องหลัง rename เป็น NDVI
+        print("GEE stats keys:", stats.keys())  # debug ดู key จริง
+        ndvi_mean = stats.get('NDVI_mean') or stats.get('NDVI') or 0
+        ndvi_min  = stats.get('NDVI_min')  or 0
+        ndvi_max  = stats.get('NDVI_max')  or 0
+
+        return {
+            "province": province_name,
+            "year": year,
+            "ndvi_mean": round(ndvi_mean, 4),
+            "ndvi_min":  round(ndvi_min, 4),
+            "ndvi_max":  round(ndvi_max, 4),
         }
 
     except Exception as e:
