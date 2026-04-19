@@ -1,7 +1,21 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+from dotenv import load_dotenv
+from datetime import datetime
 import ee
+import os
 
+# โหลด .env
+load_dotenv()
+
+# ===== Supabase Setup =====
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+print("✅ Supabase เชื่อมต่อสำเร็จ")
+
+# ===== FastAPI Setup =====
 app = FastAPI()
 
 app.add_middleware(
@@ -11,11 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== Cache เก็บผลที่เคยคำนวณแล้ว =====
-ndvi_cache = {}        # { "Phayao_2024": { ndvi_mean, ndvi_min, ndvi_max } }
-monthly_cache = {}     # { "Phayao_2024": [ {month, ndvi}, ... ] }
-
-# ===== เริ่มต้น GEE =====
+# ===== GEE Setup =====
 try:
     ee.Initialize(project='innate-beacon-483307-v1')
     print("✅ GEE เชื่อมต่อสำเร็จ")
@@ -40,28 +50,37 @@ def mask_s2_clouds(image):
 # ===== API: ทดสอบ =====
 @app.get("/")
 def read_root():
+    annual  = supabase.table("ndvi_annual").select("province,year").execute()
+    monthly = supabase.table("ndvi_monthly").select("province,year").execute()
     return {
-        "message": "Green Area API is running! 🌿",
-        "cached_provinces": list(ndvi_cache.keys())
+        "message":        "Green Area API is running! 🌿",
+        "cached_annual":  len(annual.data),
+        "cached_monthly": len(monthly.data),
     }
 
 
 # ===== API: ดึง NDVI รายเดือน =====
 @app.get("/ndvi/{province_name}/monthly")
 def get_ndvi_monthly(province_name: str, year: int = 2024):
-    cache_key = f"{province_name}_{year}"
 
-    # ← ถ้ามี cache แล้ว ตอบกลับทันที
-    if cache_key in monthly_cache:
-        print(f"✅ Cache hit: {cache_key}/monthly")
+    # ตรวจ Supabase ก่อน
+    cached = (supabase.table("ndvi_monthly")
+              .select("*")
+              .eq("province", province_name)
+              .eq("year", year)
+              .execute())
+
+    if cached.data:
+        print(f"✅ Supabase hit: {province_name}/{year}/monthly")
         return {
-            "province": province_name,
-            "year": year,
-            "monthly": monthly_cache[cache_key],
-            "from_cache": True
+            "province":   province_name,
+            "year":       year,
+            "monthly":    cached.data[0]["monthly_data"],
+            "from_cache": True,
+            "cached_at":  cached.data[0]["created_at"],
         }
 
-    print(f"⏳ Computing: {cache_key}/monthly")
+    print(f"⏳ Computing: {province_name}/{year}/monthly")
 
     try:
         province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
@@ -84,11 +103,11 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
             count = col.size().getInfo()
 
             if count > 0:
-                ndvi_monthly = (col.median()
-                                .normalizedDifference(['B8', 'B4'])
-                                .rename('NDVI')
-                                .clip(province))
-                stats = ndvi_monthly.reduceRegion(
+                ndvi_img = (col.median()
+                            .normalizedDifference(['B8', 'B4'])
+                            .rename('NDVI')
+                            .clip(province))
+                stats = ndvi_img.reduceRegion(
                     reducer=ee.Reducer.mean(),
                     geometry=province.geometry(),
                     scale=500,
@@ -101,21 +120,25 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
                 ndvi_val = None
 
             results.append({
-                "month": month_names[m - 1],
-                "month_num": m,
-                "ndvi": ndvi_val,
-                "image_count": count
+                "month":       month_names[m - 1],
+                "month_num":   m,
+                "ndvi":        ndvi_val,
+                "image_count": count,
             })
 
-        # ← เก็บลง cache
-        monthly_cache[cache_key] = results
-        print(f"✅ Cached: {cache_key}/monthly")
+        # บันทึกลง Supabase
+        supabase.table("ndvi_monthly").insert({
+            "province":     province_name,
+            "year":         year,
+            "monthly_data": results,
+        }).execute()
+        print(f"✅ Saved to Supabase: {province_name}/{year}/monthly")
 
         return {
-            "province": province_name,
-            "year": year,
-            "monthly": results,
-            "from_cache": False
+            "province":   province_name,
+            "year":       year,
+            "monthly":    results,
+            "from_cache": False,
         }
 
     except Exception as e:
@@ -125,14 +148,28 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
 # ===== API: ดึง NDVI รายปี =====
 @app.get("/ndvi/{province_name}")
 def get_ndvi(province_name: str, year: int = 2024):
-    cache_key = f"{province_name}_{year}"
 
-    # ← ถ้ามี cache แล้ว ตอบกลับทันที
-    if cache_key in ndvi_cache:
-        print(f"✅ Cache hit: {cache_key}")
-        return {**ndvi_cache[cache_key], "from_cache": True}
+    # ตรวจ Supabase ก่อน
+    cached = (supabase.table("ndvi_annual")
+              .select("*")
+              .eq("province", province_name)
+              .eq("year", year)
+              .execute())
 
-    print(f"⏳ Computing: {cache_key}")
+    if cached.data:
+        print(f"✅ Supabase hit: {province_name}/{year}")
+        row = cached.data[0]
+        return {
+            "province":   province_name,
+            "year":       year,
+            "ndvi_mean":  row["ndvi_mean"],
+            "ndvi_min":   row["ndvi_min"],
+            "ndvi_max":   row["ndvi_max"],
+            "from_cache": True,
+            "cached_at":  row["created_at"],
+        }
+
+    print(f"⏳ Computing: {province_name}/{year}")
 
     try:
         province = ee.FeatureCollection('FAO/GAUL/2015/level1') \
@@ -158,28 +195,55 @@ def get_ndvi(province_name: str, year: int = 2024):
             bestEffort=True
         ).getInfo()
 
-        result = {
-            "province": province_name,
-            "year": year,
-            "ndvi_mean": round(stats.get('NDVI_mean') or 0, 4),
-            "ndvi_min":  round(stats.get('NDVI_min')  or 0, 4),
-            "ndvi_max":  round(stats.get('NDVI_max')  or 0, 4),
-            "from_cache": False
+        ndvi_mean = round(stats.get('NDVI_mean') or 0, 4)
+        ndvi_min  = round(stats.get('NDVI_min')  or 0, 4)
+        ndvi_max  = round(stats.get('NDVI_max')  or 0, 4)
+
+        # บันทึกลง Supabase
+        supabase.table("ndvi_annual").insert({
+            "province":  province_name,
+            "year":      year,
+            "ndvi_mean": ndvi_mean,
+            "ndvi_min":  ndvi_min,
+            "ndvi_max":  ndvi_max,
+        }).execute()
+        print(f"✅ Saved to Supabase: {province_name}/{year}")
+
+        return {
+            "province":   province_name,
+            "year":       year,
+            "ndvi_mean":  ndvi_mean,
+            "ndvi_min":   ndvi_min,
+            "ndvi_max":   ndvi_max,
+            "from_cache": False,
         }
-
-        # ← เก็บลง cache
-        ndvi_cache[cache_key] = result
-        print(f"✅ Cached: {cache_key}")
-
-        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ===== API: ล้าง cache (ใช้ตอน debug) =====
+# ===== API: ดูข้อมูลใน DB ทั้งหมด =====
+@app.get("/cache")
+def get_cache():
+    annual  = supabase.table("ndvi_annual").select("province,year,ndvi_mean,created_at").execute()
+    monthly = supabase.table("ndvi_monthly").select("province,year,created_at").execute()
+    return {
+        "annual":  annual.data,
+        "monthly": monthly.data,
+    }
+
+
+# ===== API: ล้าง cache ทั้งหมด =====
 @app.delete("/cache")
 def clear_cache():
-    ndvi_cache.clear()
-    monthly_cache.clear()
-    return {"message": "Cache cleared"}
+    supabase.table("ndvi_annual").delete().neq("id", 0).execute()
+    supabase.table("ndvi_monthly").delete().neq("id", 0).execute()
+    return {"message": "✅ Cache cleared"}
+
+
+# ===== API: ล้าง cache จังหวัดเดียว =====
+@app.delete("/cache/{province_name}")
+def clear_province_cache(province_name: str):
+    supabase.table("ndvi_annual").delete().eq("province", province_name).execute()
+    supabase.table("ndvi_monthly").delete().eq("province", province_name).execute()
+    return {"message": f"✅ Cache cleared for {province_name}"}
