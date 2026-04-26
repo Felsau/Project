@@ -263,24 +263,54 @@ function App() {
               </div>
 
               {/* Stats Grid */}
-              <div className="stat-row" style={{ flexWrap: 'wrap' }}>
-                <div className="stat-card-sm" style={{ flexBasis: '100%' }}>
-                  <div className="stat-label">พื้นที่จังหวัด (Turf.js)</div>
-                  <div className="stat-value-sm" style={{ color: '#202124' }}>
-                    {provinceArea ? `${Number(provinceArea).toLocaleString()} km²` : '—'}
+              <div className="sidebar-section">
+                <div className="stat-grid">
+                  <div className="stat-item" style={{ gridColumn: 'span 2' }}>
+                    <span className="stat-item-label">พื้นที่จังหวัด (Turf.js)</span>
+                    <span className="stat-item-value">
+                      {provinceArea ? `${Number(provinceArea).toLocaleString()} km²` : '—'}
+                    </span>
                   </div>
-                </div>
-                <div className="stat-card-sm">
-                  <div className="stat-label">NDVI Min</div>
-                  <div className="stat-value-sm" style={{ color: '#d93025' }}>
-                    {ndviStats ? ndviStats.ndvi_min : '—'}
+                  <div className="stat-item">
+                    <span className="stat-item-label">NDVI Min</span>
+                    <span className="stat-item-value">{ndviStats?.ndvi_min ?? '—'}</span>
                   </div>
-                </div>
-                <div className="stat-card-sm">
-                  <div className="stat-label">NDVI Max</div>
-                  <div className="stat-value-sm">
-                    {ndviStats ? ndviStats.ndvi_max : '—'}
+                  <div className="stat-item">
+                    <span className="stat-item-label">NDVI Max</span>
+                    <span className="stat-item-value">{ndviStats?.ndvi_max ?? '—'}</span>
                   </div>
+
+                  {/* ← เพิ่มใหม่ */}
+                  <div className="stat-item" style={{ gridColumn: 'span 2', borderColor: '#2a4a2a' }}>
+                    <span className="stat-item-label">🌿 พื้นที่สีเขียว (NDVI &gt; 0.3)</span>
+                    <span className="stat-item-value" style={{ fontSize: '1.3rem' }}>
+                      {ndviStats?.green_area_pct != null
+                        ? `${ndviStats.green_area_pct}%`
+                        : ndviLoading ? '...' : '—'}
+                    </span>
+                    {ndviStats?.green_area_km2 != null && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {ndviStats.green_area_km2.toLocaleString()} km²
+                      </span>
+                    )}
+                  </div>
+
+                  {/* WHO Status */}
+                  {ndviStats?.who_status && (
+                    <div className="stat-item" style={{
+                      gridColumn: 'span 2',
+                      borderColor: ndviStats.who_status.includes('ผ่าน') ? '#22c55e' : '#f59e0b',
+                    }}>
+                      <span className="stat-item-label">มาตรฐาน WHO (9 m²/คน)</span>
+                      <span style={{
+                        fontSize: '0.8rem',
+                        color: ndviStats.who_status.includes('ผ่าน') ? '#4ade80' : '#fbbf24',
+                        fontWeight: 'bold',
+                      }}>
+                        {ndviStats.who_status}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
