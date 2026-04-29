@@ -31,7 +31,6 @@ except Exception as e:
 
 
 def mask_s2_clouds(image):
-    supabase = get_supabase()
     qa = image.select('QA60')
     cloud_bit = 1 << 10
     cirrus_bit = 1 << 11
@@ -149,9 +148,11 @@ def get_ndvi_monthly(province_name: str, year: int = 2024):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ===== API: ดึง NDVI รายปี =====
 @app.get("/ndvi/{province_name}")
 def get_ndvi(province_name: str, year: int = 2024):
     supabase = get_supabase()
+
     cached = (supabase.table("ndvi_annual")
               .select("*")
               .eq("province", province_name)
@@ -159,20 +160,25 @@ def get_ndvi(province_name: str, year: int = 2024):
               .execute())
 
     if cached.data:
-        print(f"✅ Supabase hit: {province_name}/{year}")
         row = cached.data[0]
-        return {
-            "province":        province_name,
-            "year":            year,
-            "ndvi_mean":       row["ndvi_mean"],
-            "ndvi_min":        row["ndvi_min"],
-            "ndvi_max":        row["ndvi_max"],
-            "green_area_pct":  row.get("green_area_pct"),
-            "green_area_km2":  row.get("green_area_km2"),
-            "who_status":      row.get("who_status"),
-            "from_cache":      True,
-            "cached_at":       row["created_at"],
-        }
+        # Cache record is outdated (missing green area fields from old version) — delete and recompute
+        if row.get("green_area_pct") is None:
+            print(f"♻️ Stale cache (no green area): {province_name}/{year} — recomputing")
+            supabase.table("ndvi_annual").delete().eq("id", row["id"]).execute()
+        else:
+            print(f"✅ Supabase hit: {province_name}/{year}")
+            return {
+                "province":       province_name,
+                "year":           year,
+                "ndvi_mean":      row["ndvi_mean"],
+                "ndvi_min":       row["ndvi_min"],
+                "ndvi_max":       row["ndvi_max"],
+                "green_area_pct": row["green_area_pct"],
+                "green_area_km2": row.get("green_area_km2"),
+                "who_status":     row.get("who_status"),
+                "from_cache":     True,
+                "cached_at":      row["created_at"],
+            }
 
     print(f"⏳ Computing: {province_name}/{year}")
 
@@ -190,7 +196,6 @@ def get_ndvi(province_name: str, year: int = 2024):
 
         ndvi = s2.normalizedDifference(['B8', 'B4']).rename('NDVI')
 
-        # ===== คำนวณ NDVI สถิติ =====
         stats = ndvi.reduceRegion(
             reducer=ee.Reducer.mean()
                     .combine(ee.Reducer.min(), '', True)
@@ -205,48 +210,42 @@ def get_ndvi(province_name: str, year: int = 2024):
         ndvi_min  = round(stats.get('NDVI_min')  or 0, 4)
         ndvi_max  = round(stats.get('NDVI_max')  or 0, 4)
 
-        # ===== คำนวณ % พื้นที่สีเขียว (NDVI > 0.3) =====
-        green_mask  = ndvi.gt(0.3)  # 1 = สีเขียว, 0 = ไม่ใช่
-        total_area  = province.geometry().area(maxError=500).getInfo()  # m²
+        green_mask = ndvi.gt(0.3)
 
-        green_pixels = green_mask.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=province.geometry(),
-            scale=500,
-            maxPixels=1e10,
-            bestEffort=True
-        ).getInfo()
+        total_area_m2 = (ee.Image.pixelArea()
+                         .clip(province)
+                         .reduceRegion(
+                             reducer=ee.Reducer.sum(),
+                             geometry=province.geometry(),
+                             scale=500,
+                             maxPixels=1e10,
+                             bestEffort=True
+                         ).get('area').getInfo())
 
-        green_area_m2  = green_pixels.get('NDVI', 0) or 0
-        green_area_km2 = round(green_area_m2 / 1_000_000, 2)
-        green_area_pct = round((green_area_m2 / total_area) * 100, 2) if total_area > 0 else 0
+        green_area_m2 = (ee.Image.pixelArea()
+                         .updateMask(green_mask)
+                         .clip(province)
+                         .reduceRegion(
+                             reducer=ee.Reducer.sum(),
+                             geometry=province.geometry(),
+                             scale=500,
+                             maxPixels=1e10,
+                             bestEffort=True
+                         ).get('area').getInfo())
 
-        # ===== เปรียบเทียบ WHO =====
-        population    = PROVINCE_POPULATION.get(province_name, None)
-        who_status    = None
-        who_m2_person = None
+        green_area_km2 = round((green_area_m2 or 0) / 1_000_000, 2)
+        green_area_pct = round(((green_area_m2 or 0) / total_area_m2) * 100, 1) if total_area_m2 else 0
 
-        if population and green_area_m2 > 0:
-            who_m2_person = round(green_area_m2 / population, 1)
-            if who_m2_person >= WHO_STANDARD_M2:
-                who_status = "ผ่านมาตรฐาน WHO"
+        population = PROVINCE_POPULATION.get(province_name)
+        if population and green_area_m2:
+            m2_per_person = green_area_m2 / population
+            if m2_per_person >= WHO_STANDARD_M2:
+                who_status = f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"
             else:
-                who_status = f"ต่ำกว่ามาตรฐาน WHO ({who_m2_person} m²/คน)"
+                who_status = f"ต่ำกว่ามาตรฐาน WHO ⚠️ ({m2_per_person:.1f} m²/คน)"
+        else:
+            who_status = None
 
-        result = {
-            "province":        province_name,
-            "year":            year,
-            "ndvi_mean":       ndvi_mean,
-            "ndvi_min":        ndvi_min,
-            "ndvi_max":        ndvi_max,
-            "green_area_pct":  green_area_pct,
-            "green_area_km2":  green_area_km2,
-            "who_m2_person":   who_m2_person,
-            "who_status":      who_status,
-            "from_cache":      False,
-        }
-
-        # บันทึกลง Supabase (เพิ่ม column ใหม่)
         supabase.table("ndvi_annual").insert({
             "province":       province_name,
             "year":           year,
@@ -258,12 +257,20 @@ def get_ndvi(province_name: str, year: int = 2024):
             "who_status":     who_status,
         }).execute()
 
-        print(f"✅ Saved: {province_name} — สีเขียว {green_area_pct}%")
-        return result
+        return {
+            "province":       province_name,
+            "year":           year,
+            "ndvi_mean":      ndvi_mean,
+            "ndvi_min":       ndvi_min,
+            "ndvi_max":       ndvi_max,
+            "green_area_pct": green_area_pct,
+            "green_area_km2": green_area_km2,
+            "who_status":     who_status,
+            "from_cache":     False,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/cache")
 def get_cache():

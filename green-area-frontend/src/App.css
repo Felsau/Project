@@ -1,5 +1,9 @@
-/* นำเข้า Font สไตล์ Google (Roboto) เพื่อให้ดูเหมือน GEE มากขึ้น */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+:root {
+  --text-muted: #80868b;
+  --font-mono: 'Roboto Mono', monospace;
+}
 
 * {
   margin: 0;
@@ -46,11 +50,9 @@ body {
 
 .map-container {
   flex: 1;
-  height: 100%;
+  position: relative; /* required for deck.gl canvas and tooltip positioning */
   background-color: #e3e6e8;
-  display: flex; /* เพิ่ม flex */
-  align-items: center; /* จัดให้อยู่กึ่งกลางแนวตั้ง */
-  justify-content: center; /* จัดให้อยู่กึ่งกลางแนวนอน */
+  min-width: 0;
 }
 
 /* Sidebar */
@@ -190,4 +192,64 @@ body {
   text-align: left;
   margin-top: 8px;
   font-style: italic;
+}
+
+/* Stat grid inside sidebar */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-item {
+  background-color: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-item-label {
+  color: #5f6368;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.stat-item-value {
+  color: #202124;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Loading bar animation */
+@keyframes loading {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.loading-bar {
+  overflow: hidden;
+  position: relative;
+}
+
+/* Leaflet province tooltip */
+.province-tooltip {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  color: #202124;
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
 }

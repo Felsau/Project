@@ -1,7 +1,10 @@
-import { useEffect, useState, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import { useEffect, useState } from 'react';
+import DeckGL from '@deck.gl/react';
+import { GeoJsonLayer } from '@deck.gl/layers';
+import { FlyToInterpolator } from '@deck.gl/core';
+import Map from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import 'leaflet/dist/leaflet.css';
 import './App.css';
 import * as turf from '@turf/turf';
 
@@ -44,14 +47,18 @@ const PROVINCE_TH = {
   "Trat": "ตราด", "Ubon Ratchathani": "อุบลราชธานี",
   "Udon Thani": "อุดรธานี", "Uthai Thani": "อุทัยธานี",
   "Uttaradit": "อุตรดิตถ์", "Yala": "ยะลา",
-  "Yasothon": "ยโสธร"
+  "Yasothon": "ยโสธร",
 };
 
-const THAILAND_CENTER = [13.0, 101.0];
-const THAILAND_BOUNDS = [
-  [5.5, 97.5],
-  [20.5, 105.7],
-];
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+
+const INITIAL_VIEW_STATE = {
+  longitude: 101.0,
+  latitude: 13.0,
+  zoom: 5.5,
+  pitch: 25,
+  bearing: 0,
+};
 
 const getNdviColor = (value) => {
   if (value >= 0.6) return '#22c55e';
@@ -68,31 +75,46 @@ const getNdviLabel = (value) => {
   return 'พืชพรรณน้อย';
 };
 
+const getNdviRgba = (value, alpha = 200) => {
+  if (!value) return [200, 230, 200, 120];
+  if (value >= 0.6) return [34, 197, 94, alpha];
+  if (value >= 0.45) return [74, 222, 128, alpha];
+  if (value >= 0.3) return [134, 239, 172, alpha];
+  return [187, 247, 208, alpha];
+};
+
 function App() {
-  const [thailandData, setThailandData]     = useState(null);
-  const [loading, setLoading]               = useState(true);
+  const [thailandData, setThailandData]         = useState(null);
+  const [loading, setLoading]                   = useState(true);
   const [selectedProvince, setSelectedProvince] = useState(null);
-  const [provinceArea, setProvinceArea]     = useState(null);
-  const [ndviStats, setNdviStats]           = useState(null);   // ← เพิ่ม
-  const [ndviMonthly, setNdviMonthly]       = useState([]);     // ← เพิ่ม
-  const [ndviLoading, setNdviLoading]       = useState(false);  // ← เพิ่ม
-  const mapRef = useRef(null);
-  const selectedLayerRef = useRef(null);
+  const [selectedProvinceEN, setSelectedProvinceEN] = useState(null);
+  const [provinceArea, setProvinceArea]         = useState(null);
+  const [ndviStats, setNdviStats]               = useState(null);
+  const [ndviMonthly, setNdviMonthly]           = useState([]);
+  const [ndviLoading, setNdviLoading]           = useState(false);
+  const [ndviCache, setNdviCache]               = useState({});
+  const [viewState, setViewState]               = useState(INITIAL_VIEW_STATE);
+  const [tooltip, setTooltip]                   = useState(null);
 
   useEffect(() => {
     fetch('/thailand.json')
-      .then((res) => res.json())
-      .then((data) => {
-        setThailandData(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('โหลดข้อมูลไม่สำเร็จ:', err);
-        setLoading(false);
-      });
+      .then(r => r.json())
+      .then(data => { setThailandData(data); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
-  // ← แก้ fetchNDVI ให้ครบ
+  // Pre-populate extrusion heights from cached NDVI in Supabase
+  useEffect(() => {
+    fetch('http://localhost:8000/cache')
+      .then(r => r.json())
+      .then(data => {
+        const cache = {};
+        data.annual?.forEach(row => { cache[row.province] = row.ndvi_mean; });
+        setNdviCache(cache);
+      })
+      .catch(() => {});
+  }, []);
+
   const fetchNDVI = async (provinceName) => {
     setNdviLoading(true);
     setNdviStats(null);
@@ -100,12 +122,15 @@ function App() {
     try {
       const [statsRes, monthlyRes] = await Promise.all([
         fetch(`http://localhost:8000/ndvi/${provinceName}`),
-        fetch(`http://localhost:8000/ndvi/${provinceName}/monthly`)
+        fetch(`http://localhost:8000/ndvi/${provinceName}/monthly`),
       ]);
-      const stats = await statsRes.json();
+      const stats   = await statsRes.json();
       const monthly = await monthlyRes.json();
       setNdviStats(stats);
       setNdviMonthly(monthly.monthly.filter(m => m.ndvi !== null));
+      if (stats.ndvi_mean) {
+        setNdviCache(prev => ({ ...prev, [provinceName]: stats.ndvi_mean }));
+      }
     } catch (err) {
       console.error('ดึงข้อมูล NDVI ไม่สำเร็จ:', err);
     } finally {
@@ -113,77 +138,79 @@ function App() {
     }
   };
 
-  const defaultStyle = {
-    color: '#2a4a2a', weight: 1, opacity: 0.8,
-    fillColor: '#4ade80', fillOpacity: 0.08,
-  };
-  const hoverStyle = {
-    color: '#4ade80', weight: 1.5,
-    fillColor: '#4ade80', fillOpacity: 0.25,
-  };
-  const selectedStyle = {
-    color: '#86efac', weight: 2,
-    fillColor: '#4ade80', fillOpacity: 0.45,
-  };
-
-  const onEachProvince = (feature, layer) => {
-    const nameEN = feature.properties.name || '';
-    const nameTH = PROVINCE_TH[nameEN] || nameEN;
-    const name = nameEN; // ยังใช้ EN สำหรับเรียก API
-
-  layer.bindTooltip(`${nameTH}<br><span style="font-size:0.7rem;opacity:0.6">${nameEN}</span>`, {
-    permanent: false,
-    direction: 'center',
-    className: 'province-tooltip',
-  });
-
-    layer.on({
-      mouseover: (e) => {
-        if (selectedLayerRef.current !== e.target) e.target.setStyle(hoverStyle);
-      },
-      mouseout: (e) => {
-        if (selectedLayerRef.current !== e.target) {
-          e.target.setStyle(defaultStyle);
-        } else {
-          e.target.setStyle(selectedStyle);
-        }
-      },
-      click: (e) => {
-        const map = mapRef.current;
-        if (selectedLayerRef.current === e.target) return;
-        if (selectedLayerRef.current) selectedLayerRef.current.setStyle(defaultStyle);
-        e.target.setStyle(selectedStyle);
-        selectedLayerRef.current = e.target;
-        setSelectedProvince(nameTH || nameEN);
-
-
-        // คำนวณพื้นที่ด้วย Turf.js
-        const areaKm2 = turf.area(feature) / 1_000_000;
-        setProvinceArea(areaKm2.toFixed(2));
-
-        // ← เรียก fetchNDVI ตอนคลิก
-        fetchNDVI(name);
-
-        if (map) map.fitBounds(e.target.getBounds(), { padding: [40, 40] });
-      },
-    });
-  };
-
   const handleReset = () => {
-    if (selectedLayerRef.current) {
-      selectedLayerRef.current.setStyle(defaultStyle);
-      selectedLayerRef.current = null;
-    }
     setSelectedProvince(null);
+    setSelectedProvinceEN(null);
     setNdviStats(null);
     setNdviMonthly([]);
     setProvinceArea(null);
-    if (mapRef.current) mapRef.current.setView(THAILAND_CENTER, 6);
+    setViewState({
+      ...INITIAL_VIEW_STATE,
+      transitionDuration: 800,
+      transitionInterpolator: new FlyToInterpolator(),
+    });
   };
+
+  const layers = thailandData ? [
+    new GeoJsonLayer({
+      id: 'thailand-provinces',
+      data: thailandData,
+      extruded: true,
+      wireframe: false,
+      getElevation: (f) => {
+        const ndvi = ndviCache[f.properties.name];
+        return ndvi ? ndvi * 30000 : 0;
+      },
+      getFillColor: (f) => {
+        if (f.properties.name === selectedProvinceEN) return [26, 115, 232, 230];
+        return getNdviRgba(ndviCache[f.properties.name], 200);
+      },
+      getLineColor: [42, 74, 42, 160],
+      lineWidthMinPixels: 1,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [26, 115, 232, 80],
+      onClick: ({ object }) => {
+        if (!object) return;
+        const nameEN = object.properties.name;
+        const nameTH = PROVINCE_TH[nameEN] || nameEN;
+
+        setSelectedProvince(nameTH);
+        setSelectedProvinceEN(nameEN);
+        setProvinceArea((turf.area(object) / 1_000_000).toFixed(2));
+        fetchNDVI(nameEN);
+
+        const [minLng, minLat, maxLng, maxLat] = turf.bbox(object);
+        const maxSpan = Math.max(maxLng - minLng, maxLat - minLat);
+        const zoom = Math.min(10, Math.max(6, Math.log2(4 / maxSpan) + 7));
+
+        setViewState({
+          longitude: (minLng + maxLng) / 2,
+          latitude:  (minLat + maxLat) / 2,
+          zoom,
+          pitch: 40,
+          bearing: 0,
+          transitionDuration: 800,
+          transitionInterpolator: new FlyToInterpolator(),
+        });
+      },
+      onHover: ({ object, x, y }) => {
+        setTooltip(object ? {
+          x, y,
+          nameTH: PROVINCE_TH[object.properties.name] || object.properties.name,
+          nameEN: object.properties.name,
+          ndvi:   ndviCache[object.properties.name],
+        } : null);
+      },
+      updateTriggers: {
+        getElevation: ndviCache,
+        getFillColor: [ndviCache, selectedProvinceEN],
+      },
+    }),
+  ] : [];
 
   return (
     <div className="App">
-      {/* ส่วนหัวของแอป สไตล์ GEE (สีขาว-เทา) */}
       <header className="app-header App-title">
         <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div>
@@ -197,30 +224,34 @@ function App() {
         </div>
         <div className="header-status" style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.8rem', color: '#5f6368' }}>
           <span>SRC</span>
-          <span className="status-live mock-badge" style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', border: 'none', fontWeight: '500' }}>
-            SENTINEL-2 · GEE
+          <span className="mock-badge" style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', border: 'none', fontWeight: '500' }}>
+            SENTINEL-2 · GEE · 3D
           </span>
         </div>
       </header>
 
-      {loading && <div className="loading-bar" style={{ height: '3px', backgroundColor: '#1a73e8', width: '100%', animation: 'loading 2s infinite' }} />}
+      {loading && (
+        <div className="loading-bar" style={{ height: '3px', backgroundColor: '#1a73e8', width: '100%', animation: 'loading 2s infinite' }} />
+      )}
 
       <div className="main-layout">
-        
-        {/* เลื่อน Sidebar ขึ้นมาอยู่ด้านบนในโค้ด เพื่อให้อยู่ฝั่งซ้ายมือตาม CSS */}
         <aside className="sidebar">
           {!selectedProvince ? (
-            <div className="sidebar-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', color: '#5f6368' }}>
-              <div className="sidebar-empty-icon" style={{ fontSize: '2rem', marginBottom: '12px' }}>🛰️</div>
-              <div className="sidebar-empty-title" style={{ fontSize: '1.1rem', fontWeight: '500', color: '#202124', marginBottom: '8px' }}>เลือกพื้นที่</div>
-              <p className="sidebar-empty-hint" style={{ fontSize: '0.85rem', lineHeight: '1.6' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', color: '#5f6368' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '12px' }}>🛰️</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '500', color: '#202124', marginBottom: '8px' }}>เลือกพื้นที่</div>
+              <p style={{ fontSize: '0.85rem', lineHeight: '1.6' }}>
                 คลิกที่จังหวัดบนแผนที่<br />เพื่อดูข้อมูล NDVI<br />และพื้นที่สีเขียว
               </p>
+              {Object.keys(ndviCache).length > 0 && (
+                <p style={{ fontSize: '0.75rem', color: '#1a73e8', marginTop: '16px', fontWeight: '500' }}>
+                  ✅ โหลด {Object.keys(ndviCache).length} จังหวัดจาก cache<br />ความสูง 3D พร้อมแสดงแล้ว
+                </p>
+              )}
             </div>
           ) : (
-            <div className="sidebar-content" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-              {/* Province Header */}
               <div className="sidebar-header">
                 <div>
                   <span className="sidebar-title">Selected Province</span>
@@ -231,7 +262,6 @@ function App() {
                 </span>
               </div>
 
-              {/* NDVI Main Card */}
               <div className="stat-card">
                 <div className="stat-label">NDVI · Annual Average</div>
                 {ndviLoading ? (
@@ -239,30 +269,21 @@ function App() {
                 ) : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                      <span className="stat-value">
-                        {ndviStats ? ndviStats.ndvi_mean : '—'}
-                      </span>
-                      <span className="stat-desc">
-                        {ndviStats ? getNdviLabel(ndviStats.ndvi_mean) : ''}
-                      </span>
+                      <span className="stat-value">{ndviStats ? ndviStats.ndvi_mean : '—'}</span>
+                      <span className="stat-desc">{ndviStats ? getNdviLabel(ndviStats.ndvi_mean) : ''}</span>
                     </div>
-                    {/* แถบ Progress Bar สว่างๆ */}
-                    <div className="ndvi-bar-track" style={{ height: '6px', backgroundColor: '#f1f3f4', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
-                      <div
-                        className="ndvi-bar-fill"
-                        style={{ 
-                          height: '100%', 
-                          backgroundColor: '#1e8e3e', 
-                          width: `${((ndviStats?.ndvi_mean || 0) * 100).toFixed(0)}%`,
-                          transition: 'width 0.5s ease'
-                        }}
-                      />
+                    <div style={{ height: '6px', backgroundColor: '#f1f3f4', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%',
+                        backgroundColor: '#1e8e3e',
+                        width: `${((ndviStats?.ndvi_mean || 0) * 100).toFixed(0)}%`,
+                        transition: 'width 0.5s ease',
+                      }} />
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Stats Grid */}
               <div className="sidebar-section">
                 <div className="stat-grid">
                   <div className="stat-item" style={{ gridColumn: 'span 2' }}>
@@ -279,8 +300,6 @@ function App() {
                     <span className="stat-item-label">NDVI Max</span>
                     <span className="stat-item-value">{ndviStats?.ndvi_max ?? '—'}</span>
                   </div>
-
-                  {/* ← เพิ่มใหม่ */}
                   <div className="stat-item" style={{ gridColumn: 'span 2', borderColor: '#2a4a2a' }}>
                     <span className="stat-item-label">🌿 พื้นที่สีเขียว (NDVI &gt; 0.3)</span>
                     <span className="stat-item-value" style={{ fontSize: '1.3rem' }}>
@@ -294,8 +313,6 @@ function App() {
                       </span>
                     )}
                   </div>
-
-                  {/* WHO Status */}
                   {ndviStats?.who_status && (
                     <div className="stat-item" style={{
                       gridColumn: 'span 2',
@@ -314,7 +331,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Chart Section */}
               <div className="chart-section">
                 <div className="chart-title">NDVI · Monthly Trend</div>
                 {ndviLoading ? (
@@ -322,22 +338,10 @@ function App() {
                 ) : ndviMonthly.length > 0 ? (
                   <ResponsiveContainer width="100%" height={150}>
                     <BarChart data={ndviMonthly} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fill: '#5f6368', fontSize: 10 }}
-                        axisLine={{ stroke: '#dadce0' }} tickLine={false}
-                      />
-                      <YAxis
-                        domain={[0, 1]}
-                        tick={{ fill: '#5f6368', fontSize: 10 }}
-                        axisLine={{ stroke: '#dadce0' }} tickLine={false}
-                      />
+                      <XAxis dataKey="month" tick={{ fill: '#5f6368', fontSize: 10 }} axisLine={{ stroke: '#dadce0' }} tickLine={false} />
+                      <YAxis domain={[0, 1]} tick={{ fill: '#5f6368', fontSize: 10 }} axisLine={{ stroke: '#dadce0' }} tickLine={false} />
                       <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#ffffff', border: '1px solid #dadce0',
-                          borderRadius: '4px', color: '#202124',
-                          fontSize: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
-                        }}
+                        contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #dadce0', borderRadius: '4px', color: '#202124', fontSize: '12px', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
                         formatter={(value) => [value?.toFixed(3), 'NDVI']}
                         cursor={{ fill: '#f1f3f4' }}
                       />
@@ -351,46 +355,56 @@ function App() {
                 ) : (
                   <p className="data-note">ไม่มีข้อมูลรายเดือน</p>
                 )}
-                
                 <p className="data-note" style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f1f3f4' }}>
-                  {ndviStats
-                    ? '* ข้อมูลจาก Sentinel-2 ผ่าน Google Earth Engine'
-                    : '* กำลังรอข้อมูลจาก GEE'}
+                  {ndviStats ? '* ข้อมูลจาก Sentinel-2 ผ่าน Google Earth Engine' : '* กำลังรอข้อมูลจาก GEE'}
                 </p>
               </div>
 
-              {/* Reset Button */}
               <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                <button className="reset-btn" onClick={handleReset}>
-                  ← กลับดูทั้งประเทศ
-                </button>
+                <button className="reset-btn" onClick={handleReset}>← กลับดูทั้งประเทศ</button>
               </div>
 
             </div>
           )}
         </aside>
 
-        {/* แผนที่ย้ายมาอยู่ด้านล่างในโค้ด เพื่อให้อยู่ฝั่งขวามือ */}
-        <MapContainer
-          center={THAILAND_CENTER}
-          zoom={6} minZoom={6} maxZoom={18}
-          maxBounds={THAILAND_BOUNDS}
-          maxBoundsViscosity={1.0}
-          className="map-container"
-          ref={mapRef}
-          doubleClickZoom={false}
-          style={{ backgroundColor: '#e3e6e8' }} // ป้องกันแผนที่ดำตอนโหลด
-        >
-          {/* แนะนำให้เปลี่ยน TileLayer เป็นแบบสว่างเพื่อให้เข้ากับ UI นะครับ */}
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          />
-          {thailandData && (
-            <GeoJSON data={thailandData} style={defaultStyle} onEachFeature={onEachProvince} />
-          )}
-        </MapContainer>
+        <div className="map-container">
+          <DeckGL
+            viewState={viewState}
+            onViewStateChange={({ viewState: vs }) => setViewState(vs)}
+            controller={true}
+            layers={layers}
+            getCursor={({ isHovering }) => isHovering ? 'pointer' : 'default'}
+          >
+            <Map mapStyle={MAP_STYLE} />
+          </DeckGL>
 
+          {tooltip && (
+            <div style={{
+              position: 'absolute',
+              left: tooltip.x + 12,
+              top: tooltip.y - 44,
+              background: 'rgba(255,255,255,0.97)',
+              padding: '6px 10px',
+              borderRadius: '4px',
+              border: '1px solid #dadce0',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              color: '#202124',
+              pointerEvents: 'none',
+              zIndex: 1000,
+              whiteSpace: 'nowrap',
+            }}>
+              {tooltip.nameTH}
+              <br />
+              <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>{tooltip.nameEN}</span>
+              {tooltip.ndvi != null && (
+                <><br /><span style={{ fontSize: '0.7rem', color: '#1e8e3e' }}>NDVI: {tooltip.ndvi.toFixed(3)}</span></>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
