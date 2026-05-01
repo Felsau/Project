@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:data.apps.fao.org)",
+      "WebFetch(domain:assets.publishing.service.gov.uk)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:geonode.wfp.org)",
+      "WebFetch(domain:gee-community-catalog.org)",
+      "WebFetch(domain:www.gaez.iiasa.ac.at)",
+      "WebFetch(domain:datacommons.org)",
+      "WebFetch(domain:data.humdata.org)",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -type f -name \"*.json\")",
+      "Bash(head -100 \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -type f \\\\\\( -name \"*.py\" -o -name \"*.csv\" -o -name \"*.geojson\" \\\\\\))",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -type f -name \"*.py\")",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -type f -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.ts\" -o -name \"*.tsx\")",
+      "Bash(wc -l \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(tail -50 \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(grep -o '\"name\"' \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(python3)",
+      "Bash(grep -o '\"name\": \"[^\"]*\"' \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -type f \\\\\\( -name \"README*\" -o -name \"*.md\" \\\\\\))",
+      "Bash(ls -la \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\\")",
+      "Bash(find \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\" -maxdepth 3 -type d)",
+      "Bash(ls -lh \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\\")",
+      "Bash(head -1 \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(tail -5 \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\public\\\\\\\\thailand.json\")",
+      "Bash(grep -r \"province\" \"c:\\\\\\\\Users\\\\\\\\ฟลุก\\\\\\\\Desktop\\\\\\\\Project\\\\\\\\green-area-frontend\\\\\\\\src\" --include=\"*.js\" -n)",
+      "Bash(curl -L -o gadm41_THA_1.json.zip \"https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_THA_1.json.zip\" --progress-bar)",
+      "Bash(unzip -o gadm41_THA_1.json.zip)",
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl -s \"http://localhost:8000/gaul/thailand\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(n\\) for n in d['provinces']]\")",
+      "Bash(curl -s -X DELETE \"http://localhost:8000/cache\")",
+      "Bash(git -C \"c:/Users/ฟลุก/Desktop/Project\" diff --stat HEAD)"
+    ]
+  }
+}

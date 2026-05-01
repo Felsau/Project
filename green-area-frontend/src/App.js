@@ -10,7 +10,7 @@ import * as turf from '@turf/turf';
 
 const PROVINCE_TH = {
   "Amnat Charoen": "อำนาจเจริญ", "Ang Thong": "อ่างทอง",
-  "Bangkok": "กรุงเทพมหานคร", "Bueng Kan": "บึงกาฬ",
+  "Bangkok Metropolis": "กรุงเทพมหานคร", "Bueng Kan": "บึงกาฬ",
   "Buri Ram": "บุรีรัมย์", "Chachoengsao": "ฉะเชิงเทรา",
   "Chai Nat": "ชัยนาท", "Chaiyaphum": "ชัยภูมิ",
   "Chanthaburi": "จันทบุรี", "Chiang Mai": "เชียงใหม่",
@@ -38,7 +38,7 @@ const PROVINCE_TH = {
   "Rayong": "ระยอง", "Roi Et": "ร้อยเอ็ด",
   "Sa Kaeo": "สระแก้ว", "Sakon Nakhon": "สกลนคร",
   "Samut Prakan": "สมุทรปราการ", "Samut Sakhon": "สมุทรสาคร",
-  "Samut Songkhram": "สมุทรสงคราม", "Sara Buri": "สระบุรี",
+  "Samut Songkhram": "สมุทรสงคราม", "Saraburi": "สระบุรี",
   "Satun": "สตูล", "Si Sa Ket": "ศรีสะเกษ",
   "Sing Buri": "สิงห์บุรี", "Songkhla": "สงขลา",
   "Sukhothai": "สุโขทัย", "Suphan Buri": "สุพรรณบุรี",
