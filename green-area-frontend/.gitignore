@@ -21,3 +21,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# environment variables
+.env
+
+# generated district boundary file (regenerate with generate_districts.py)
+/public/thailand_districts.json
