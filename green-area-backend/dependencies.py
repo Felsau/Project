@@ -1,4 +1,5 @@
 from functools import lru_cache
+from fastapi import Header, HTTPException
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import datetime
@@ -10,9 +11,18 @@ load_dotenv()
 CURRENT_YEAR = datetime.now().year
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 WHO_STANDARD_M2 = 9
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+
+def require_admin(x_admin_token: str | None = Header(default=None)):
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=503,
+                            detail="ADMIN_TOKEN ยังไม่ตั้งค่าใน .env — endpoint นี้ปิดใช้งาน")
+    if x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @lru_cache(maxsize=1)

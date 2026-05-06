@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
 
 export function useTrendData() {
@@ -39,7 +39,7 @@ export function useTrendData() {
     );
   };
 
-  const resetTrend = () => setTrendData([]);
+  const resetTrend = useCallback(() => setTrendData([]), []);
 
   return {
     trendYears, trendData, trendLoading, trendProgress, trendMetric,

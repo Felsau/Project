@@ -1,4 +1,5 @@
 export const getNdviColor = (value) => {
+  if (value == null) return '#bbf7d0';
   if (value >= 0.6) return '#22c55e';
   if (value >= 0.45) return '#4ade80';
   if (value >= 0.3) return '#86efac';
@@ -6,7 +7,7 @@ export const getNdviColor = (value) => {
 };
 
 export const getNdviLabel = (value) => {
-  if (!value) return '—';
+  if (value == null) return '—';
   if (value >= 0.6) return 'พืชพรรณหนาแน่นมาก';
   if (value >= 0.45) return 'พืชพรรณหนาแน่น';
   if (value >= 0.3) return 'พืชพรรณปานกลาง';
@@ -14,7 +15,7 @@ export const getNdviLabel = (value) => {
 };
 
 export const getLstColor = (value) => {
-  if (!value) return '#dadce0';
+  if (value == null) return '#dadce0';
   if (value < 28) return '#60a5fa';
   if (value < 33) return '#fbbf24';
   if (value < 38) return '#f97316';
@@ -22,7 +23,7 @@ export const getLstColor = (value) => {
 };
 
 export const getLstLabel = (value) => {
-  if (!value) return '—';
+  if (value == null) return '—';
   if (value < 28) return 'เย็น';
   if (value < 33) return 'ปานกลาง';
   if (value < 38) return 'ร้อน';
@@ -30,7 +31,7 @@ export const getLstLabel = (value) => {
 };
 
 export const getNdviRgba = (value, alpha = 200) => {
-  if (!value) return [200, 230, 200, 120];
+  if (value == null) return [200, 230, 200, 120];
   if (value >= 0.6) return [34, 197, 94, alpha];
   if (value >= 0.45) return [74, 222, 128, alpha];
   if (value >= 0.3) return [134, 239, 172, alpha];

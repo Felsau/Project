@@ -89,7 +89,11 @@ def _get_top_locations(priority: ee.Image, geom: ee.Geometry, n: int = 10):
 
 
 def _get_heatmap_url(priority: ee.Image) -> str:
-    """ขอ XYZ tile URL จาก GEE สำหรับแสดงเป็น heatmap layer"""
+    """ขอ XYZ tile URL จาก GEE สำหรับแสดงเป็น heatmap layer.
+
+    หมายเหตุ: URL ผูกกับ session token ของ GEE และจะหมดอายุภายในไม่กี่ชั่วโมง/วัน
+    จึงต้องเรียก getMapId ใหม่ทุกครั้งที่ส่งคำตอบให้ client (ห้าม cache URL ลง DB)
+    """
     vis = {
         'min': 0.2, 'max': 0.85,
         'palette': ['1a9850', 'a6d96a', 'ffffbf', 'fdae61', 'd73027'],
@@ -111,9 +115,16 @@ def recommend_province(province_name: str, year: int = CURRENT_YEAR):
               .is_("district", "null").eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
+        try:
+            geom = ee.Geometry(raw_geom)
+            priority, _, _, _ = _compute_priority(geom, year)
+            tile_url = _get_heatmap_url(priority)
+        except Exception as e:
+            print(f"❌ Recommend tile refresh error [{province_name}/{year}]: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=str(e))
         return {
             "province": province_name, "year": year,
-            "tile_url": row["tile_url"], "top_locations": row["top_locations"],
+            "tile_url": tile_url, "top_locations": row["top_locations"],
             "weights": {"ndvi": W_NDVI, "lst": W_LST, "population": W_POP},
             "from_cache": True, "cached_at": row["created_at"],
         }
@@ -139,6 +150,8 @@ def recommend_province(province_name: str, year: int = CURRENT_YEAR):
             "weights": {"ndvi": W_NDVI, "lst": W_LST, "population": W_POP},
             "from_cache": False,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Recommend error [{province_name}/{year}]: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -159,9 +172,16 @@ def recommend_district(province_name: str, district_name: str,
               .eq("district", district_name).eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
+        try:
+            geom = ee.Geometry(raw_geom)
+            priority, _, _, _ = _compute_priority(geom, year)
+            tile_url = _get_heatmap_url(priority)
+        except Exception as e:
+            print(f"❌ Recommend tile refresh error [{province_name}/{district_name}/{year}]: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=str(e))
         return {
             "province": province_name, "district": district_name, "year": year,
-            "tile_url": row["tile_url"], "top_locations": row["top_locations"],
+            "tile_url": tile_url, "top_locations": row["top_locations"],
             "weights": {"ndvi": W_NDVI, "lst": W_LST, "population": W_POP},
             "from_cache": True, "cached_at": row["created_at"],
         }
@@ -187,6 +207,8 @@ def recommend_district(province_name: str, district_name: str,
             "weights": {"ndvi": W_NDVI, "lst": W_LST, "population": W_POP},
             "from_cache": False,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Recommend error [{province_name}/{district_name}/{year}]: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
