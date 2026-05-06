@@ -39,8 +39,6 @@ CREATE TABLE district_ndvi_monthly (
 """
 import json
 import os
-import zipfile
-import io
 
 import requests
 import ee
