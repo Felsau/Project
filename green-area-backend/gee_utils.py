@@ -21,7 +21,7 @@ def _mask_landsat_clouds(image):
     return image.updateMask(mask)
 
 
-def _scale_lst(image):
+def scale_lst(image):
     masked = _mask_landsat_clouds(image)
     lst = (masked.select('ST_B10')
                  .multiply(0.00341802)
@@ -43,7 +43,7 @@ def get_lst_col(geom, year: int, month: int = None):
         return (ee.ImageCollection(cid)
                 .filterBounds(geom)
                 .filter(ee.Filter.And(*filters))
-                .map(_scale_lst)
+                .map(scale_lst)
                 .select('LST'))
 
     return build('LANDSAT/LC08/C02/T1_L2').merge(

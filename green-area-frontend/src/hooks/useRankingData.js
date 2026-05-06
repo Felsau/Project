@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import axios from 'axios';
 import { API_BASE, CURRENT_YEAR } from '../constants';
 
 export function useRankingData() {
@@ -12,12 +11,14 @@ export function useRankingData() {
     const y = year !== undefined ? year : rankingYear;
     setRankingLoading(true);
     try {
-      const res = await axios.get(`${API_BASE}/analysis/ranking?year=${y}`);
-      setRankingData(res.data.data || []);
+      const res = await fetch(`${API_BASE}/analysis/ranking?year=${y}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setRankingData(data.data || []);
       setRankingStats({
-        total:    res.data.total_cached,
-        whoPass:  res.data.who_pass_count,
-        whoFail:  res.data.who_fail_count,
+        total:    data.total_cached,
+        whoPass:  data.who_pass_count,
+        whoFail:  data.who_fail_count,
       });
     } catch (e) {
       setRankingData([]);
