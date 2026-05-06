@@ -1,0 +1,114 @@
+import { useState } from 'react';
+import { API_BASE } from '../constants';
+
+export function useDistrictData() {
+  const [districtsData, setDistrictsData]               = useState(null);
+  const [districtsLoading, setDistrictsLoading]         = useState(false);
+  const [selectedDistrict, setSelectedDistrict]         = useState(null);
+  const [selectedDistrictEN, setSelectedDistrictEN]     = useState(null);
+  const [districtArea, setDistrictArea]                 = useState(null);
+  const [districtNdviStats, setDistrictNdviStats]       = useState(null);
+  const [districtNdviMonthly, setDistrictNdviMonthly]   = useState([]);
+  const [districtNdviLoading, setDistrictNdviLoading]   = useState(false);
+  const [districtCache, setDistrictCache]               = useState({});
+  const [loadedCacheProvinces, setLoadedCacheProvinces] = useState(new Set());
+  const [districtLstStats, setDistrictLstStats]         = useState(null);
+  const [districtLstMonthly, setDistrictLstMonthly]     = useState([]);
+  const [districtLstLoading, setDistrictLstLoading]     = useState(false);
+
+  const ensureDistrictsLoaded = async () => {
+    if (districtsData || districtsLoading) return;
+    setDistrictsLoading(true);
+    try {
+      const r = await fetch('/thailand_districts.json');
+      const data = await r.json();
+      setDistrictsData(data);
+    } catch (err) {
+      console.error('โหลด thailand_districts.json ไม่สำเร็จ:', err);
+    } finally {
+      setDistrictsLoading(false);
+    }
+  };
+
+  const loadDistrictCache = async (provinceName) => {
+    if (!provinceName || loadedCacheProvinces.has(provinceName)) return;
+    setLoadedCacheProvinces(prev => {
+      const next = new Set(prev);
+      next.add(provinceName);
+      return next;
+    });
+    try {
+      const r = await fetch(`${API_BASE}/cache/districts?province=${encodeURIComponent(provinceName)}`);
+      if (!r.ok) return;
+      const { annual = [] } = await r.json();
+      const latestByKey = {};
+      const latestYearByKey = {};
+      annual.forEach(row => {
+        if (row.ndvi_mean == null) return;
+        const key = `${row.province}::${row.district}`;
+        if (latestYearByKey[key] == null || row.year > latestYearByKey[key]) {
+          latestYearByKey[key] = row.year;
+          latestByKey[key] = row.ndvi_mean;
+        }
+      });
+      setDistrictCache(prev => ({ ...prev, ...latestByKey }));
+    } catch (err) {
+      console.error('โหลด district cache ไม่สำเร็จ:', err);
+    }
+  };
+
+  const fetchDistrictNDVI = async (provinceName, districtName) => {
+    setDistrictNdviLoading(true);
+    setDistrictLstLoading(true);
+    setDistrictNdviStats(null);
+    setDistrictNdviMonthly([]);
+    setDistrictLstStats(null);
+    setDistrictLstMonthly([]);
+    try {
+      const enc = encodeURIComponent;
+      const [statsRes, monthlyRes, lstRes, lstMonthlyRes] = await Promise.all([
+        fetch(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}`),
+        fetch(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}/monthly`),
+        fetch(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}`),
+        fetch(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}/monthly`),
+      ]);
+      const [stats, monthly, lst, lstMonthlyJson] = await Promise.all([
+        statsRes.json(), monthlyRes.json(), lstRes.json(), lstMonthlyRes.json(),
+      ]);
+      if (statsRes.ok) setDistrictNdviStats(stats);
+      setDistrictNdviMonthly(monthlyRes.ok ? (monthly.monthly?.filter(m => m.ndvi !== null) ?? []) : []);
+      if (lstRes.ok) setDistrictLstStats(lst);
+      setDistrictLstMonthly(lstMonthlyRes.ok ? (lstMonthlyJson.monthly?.filter(m => m.lst !== null) ?? []) : []);
+      if (statsRes.ok && stats.ndvi_mean != null) {
+        const key = `${provinceName}::${districtName}`;
+        setDistrictCache(prev => ({ ...prev, [key]: stats.ndvi_mean }));
+      }
+    } catch (err) {
+      console.error('ดึงข้อมูล NDVI/LST อำเภอไม่สำเร็จ:', err);
+    } finally {
+      setDistrictNdviLoading(false);
+      setDistrictLstLoading(false);
+    }
+  };
+
+  const resetDistrict = () => {
+    setSelectedDistrict(null);
+    setSelectedDistrictEN(null);
+    setDistrictNdviStats(null);
+    setDistrictNdviMonthly([]);
+    setDistrictArea(null);
+    setDistrictLstStats(null);
+    setDistrictLstMonthly([]);
+  };
+
+  return {
+    districtsData, districtsLoading,
+    selectedDistrict, setSelectedDistrict,
+    selectedDistrictEN, setSelectedDistrictEN,
+    districtArea, setDistrictArea,
+    districtNdviStats, districtNdviMonthly, districtNdviLoading,
+    districtCache,
+    districtLstStats, districtLstMonthly, districtLstLoading,
+    ensureDistrictsLoaded, fetchDistrictNDVI, loadDistrictCache, resetDistrict,
+  };
+}
