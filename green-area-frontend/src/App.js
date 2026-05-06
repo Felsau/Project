@@ -54,7 +54,8 @@ function App() {
       transitionDuration: 800,
       transitionInterpolator: new FlyToInterpolator(),
     });
-  }, [province, district, trend, compare, recommend]);
+  }, [province.resetProvince, district.resetDistrict, trend.resetTrend,
+      compare.resetCompare, recommend.resetRecommend]);
 
   const handleViewStateChange = useCallback(({ viewState: vs }) => setViewState(vs), []);
   const getCursor = useCallback(({ isHovering }) => (isHovering ? 'pointer' : 'default'), []);

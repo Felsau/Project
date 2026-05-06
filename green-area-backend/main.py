@@ -1,10 +1,11 @@
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import ee
 
-from dependencies import get_supabase, PROVINCE_GEOMETRIES, CURRENT_YEAR
+from dependencies import (get_supabase, require_admin,
+                          PROVINCE_GEOMETRIES, CURRENT_YEAR)
 from routers import ndvi, lst, recommend
 
 GEE_PROJECT = os.getenv("GEE_PROJECT")
@@ -98,7 +99,7 @@ CACHE_TABLES = (
 )
 
 
-@app.delete("/cache")
+@app.delete("/cache", dependencies=[Depends(require_admin)])
 def clear_cache():
     supabase = get_supabase()
     for table in CACHE_TABLES:
@@ -106,7 +107,7 @@ def clear_cache():
     return {"message": "✅ Cache cleared", "tables": list(CACHE_TABLES)}
 
 
-@app.delete("/cache/{province_name}")
+@app.delete("/cache/{province_name}", dependencies=[Depends(require_admin)])
 def clear_province_cache(province_name: str):
     supabase = get_supabase()
     for table in CACHE_TABLES:

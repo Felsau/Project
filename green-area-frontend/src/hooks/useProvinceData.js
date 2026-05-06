@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { API_BASE } from '../constants';
 
 export function useProvinceData({ setNdviCache }) {
@@ -45,7 +45,7 @@ export function useProvinceData({ setNdviCache }) {
     }
   };
 
-  const resetProvince = () => {
+  const resetProvince = useCallback(() => {
     setSelectedProvince(null);
     setSelectedProvinceEN(null);
     setNdviStats(null);
@@ -53,7 +53,7 @@ export function useProvinceData({ setNdviCache }) {
     setProvinceArea(null);
     setLstStats(null);
     setLstMonthly([]);
-  };
+  }, []);
 
   return {
     selectedProvince, setSelectedProvince,

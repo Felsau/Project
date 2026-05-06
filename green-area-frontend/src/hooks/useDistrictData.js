@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { API_BASE } from '../constants';
 
 export function useDistrictData() {
@@ -32,11 +32,6 @@ export function useDistrictData() {
 
   const loadDistrictCache = async (provinceName) => {
     if (!provinceName || loadedCacheProvinces.has(provinceName)) return;
-    setLoadedCacheProvinces(prev => {
-      const next = new Set(prev);
-      next.add(provinceName);
-      return next;
-    });
     try {
       const r = await fetch(`${API_BASE}/cache/districts?province=${encodeURIComponent(provinceName)}`);
       if (!r.ok) return;
@@ -52,6 +47,11 @@ export function useDistrictData() {
         }
       });
       setDistrictCache(prev => ({ ...prev, ...latestByKey }));
+      setLoadedCacheProvinces(prev => {
+        const next = new Set(prev);
+        next.add(provinceName);
+        return next;
+      });
     } catch (err) {
       console.error('โหลด district cache ไม่สำเร็จ:', err);
     }
@@ -91,7 +91,7 @@ export function useDistrictData() {
     }
   };
 
-  const resetDistrict = () => {
+  const resetDistrict = useCallback(() => {
     setSelectedDistrict(null);
     setSelectedDistrictEN(null);
     setDistrictNdviStats(null);
@@ -99,7 +99,7 @@ export function useDistrictData() {
     setDistrictArea(null);
     setDistrictLstStats(null);
     setDistrictLstMonthly([]);
-  };
+  }, []);
 
   return {
     districtsData, districtsLoading,

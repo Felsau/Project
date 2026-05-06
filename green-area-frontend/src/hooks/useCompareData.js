@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
 
 export function useCompareData() {
@@ -24,7 +24,7 @@ export function useCompareData() {
 
   const addToCompare    = (p) => { if (!compareList.includes(p)) setCompareList(prev => [...prev, p]); };
   const removeFromCompare = (p) => { setCompareList(prev => prev.filter(x => x !== p)); setCompareData([]); };
-  const resetCompare    = () => { setCompareList([]); setCompareData([]); };
+  const resetCompare    = useCallback(() => { setCompareList([]); setCompareData([]); }, []);
 
   return {
     compareList, compareYear, compareData, compareLoading, compareMetric,
