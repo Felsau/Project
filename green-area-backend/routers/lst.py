@@ -4,9 +4,53 @@ import ee
 
 from dependencies import (get_supabase, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, MONTH_NAMES)
-from gee_utils import get_lst_col, reduce_lst
+from gee_utils import get_lst_col, reduce_lst, scale_lst
 
 router = APIRouter()
+
+
+# ── Shared compute helper ────────────────────────────────────────────────────
+def _compute_lst_monthly(geom: ee.Geometry, year: int, scale: int):
+    """LST 12 เดือน รวมใน 1 round-trip ด้วย ee.List.sequence."""
+    def build_col(m_int):
+        flt = ee.Filter.And(
+            ee.Filter.lt('CLOUD_COVER', 40),
+            ee.Filter.calendarRange(year, year, 'year'),
+            ee.Filter.calendarRange(m_int, m_int, 'month'),
+        )
+
+        def per_sat(cid):
+            return (ee.ImageCollection(cid)
+                    .filterBounds(geom)
+                    .filter(flt)
+                    .map(scale_lst)
+                    .select('LST'))
+
+        return per_sat('LANDSAT/LC08/C02/T1_L2').merge(
+               per_sat('LANDSAT/LC09/C02/T1_L2'))
+
+    def by_month(m):
+        m_int = ee.Number(m).toInt()
+        col = build_col(m_int)
+        lst = (col.median()
+               .reduceRegion(reducer=ee.Reducer.mean(), geometry=geom,
+                             scale=scale, maxPixels=1e10, bestEffort=True)
+               .get('LST'))
+        return ee.Feature(None, {'month_num': m_int, 'count': col.size(), 'lst': lst})
+
+    fc = ee.FeatureCollection(ee.List.sequence(1, 12).map(by_month))
+    feats = fc.getInfo()['features']
+
+    results = []
+    for f in feats:
+        props = f['properties']
+        m = int(props['month_num'])
+        count = int(props.get('count') or 0)
+        lst_raw = props.get('lst')
+        lst_val = round(lst_raw, 2) if lst_raw is not None else None
+        results.append({"month": MONTH_NAMES[m - 1], "month_num": m,
+                        "lst": lst_val, "image_count": count})
+    return results
 
 
 # ── District LST monthly ─────────────────────────────────── (before catch-all)
@@ -27,15 +71,7 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
 
     print(f"⏳ Computing district LST monthly: {province_name}/{district_name}/{year}")
     try:
-        geom = ee.Geometry(raw_geom)
-        results = []
-        for m in range(1, 13):
-            col = get_lst_col(geom, year, month=m)
-            count = col.size().getInfo()
-            lst_mean, _, _ = reduce_lst(col, geom, scale=100) if count > 0 else (None, None, None)
-            results.append({"month": MONTH_NAMES[m - 1], "month_num": m,
-                             "lst": lst_mean, "image_count": count})
-
+        results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=100)
         supabase.table("district_lst_monthly").insert({
             "province": province_name, "district": district_name,
             "year": year, "monthly_data": results}).execute()
@@ -103,18 +139,11 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
 
     print(f"⏳ Computing LST monthly: {province_name}/{year}")
     try:
-        geom = ee.Geometry(raw_geom)
-        results = []
-        for m in range(1, 13):
-            col = get_lst_col(geom, year, month=m)
-            count = col.size().getInfo()
-            lst_mean, _, _ = reduce_lst(col, geom, scale=500) if count > 0 else (None, None, None)
-            results.append({"month": MONTH_NAMES[m - 1], "month_num": m,
-                             "lst": lst_mean, "image_count": count})
-
+        results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=500)
         supabase.table("province_lst_monthly").insert(
             {"province": province_name, "year": year, "monthly_data": results}).execute()
-        return {"province": province_name, "year": year, "monthly": results, "from_cache": False}
+        return {"province": province_name, "year": year,
+                "monthly": results, "from_cache": False}
     except Exception as e:
         print(f"❌ LST monthly error: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
