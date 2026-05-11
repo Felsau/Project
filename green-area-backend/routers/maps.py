@@ -595,9 +595,7 @@ def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
 
         # Cache (best-effort — แค่ insert ถ้า table มีอยู่)
         try:
-            supa_call(lambda s: s.table("urban_ndvi_annual").insert({
-                **result, "district": district_name,
-            }).execute())
+            supa_call(lambda s: s.table("urban_ndvi_annual").insert(result).execute())
         except Exception as e:
             print(f"⚠️ Urban cache insert failed (non-fatal — table อาจยังไม่ถูกสร้าง): {e}")
 

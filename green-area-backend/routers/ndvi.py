@@ -9,15 +9,6 @@ from gee_utils import mask_s2_clouds
 
 router = APIRouter()
 
-# คอลัมน์ที่อาจไม่อยู่ใน Supabase schema เดิม — กรองออกก่อน insert
-# (User ค่อย ALTER TABLE เพิ่มทีหลังถ้าอยาก persist)
-_NEW_FIELDS = ('dense_area_pct', 'dense_area_km2')
-
-
-def _strip_new(d: dict) -> dict:
-    """ตัด field ใหม่ออกก่อน insert ลง Supabase (กัน schema mismatch)"""
-    return {k: v for k, v in d.items() if k not in _NEW_FIELDS}
-
 
 def _is_stale(row: dict) -> bool:
     """Cache row ที่ควร invalidate และคำนวณใหม่.
@@ -222,7 +213,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
 
         supa_call(lambda s: s.table("district_ndvi_annual").insert({
             "province": province_name, "district": district_name, "year": year,
-            **_strip_new(result),
+            **result,
         }).execute())
 
         return {
@@ -341,7 +332,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
                 "population": population, "who_status": who_status}
 
         supa_call(lambda s: s.table("ndvi_annual").insert({
-            "province": province_name, "year": year, **_strip_new(full),
+            "province": province_name, "year": year, **full,
         }).execute())
 
         return {"province": province_name, "year": year, **full, "from_cache": False}
