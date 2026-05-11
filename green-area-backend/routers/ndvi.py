@@ -2,12 +2,38 @@ from fastapi import APIRouter, HTTPException
 import traceback
 import ee
 
-from dependencies import (get_supabase, get_population,
+from dependencies import (get_supabase, get_population, supa_call,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, WHO_STANDARD_M2, MONTH_NAMES)
 from gee_utils import mask_s2_clouds
 
 router = APIRouter()
+
+# คอลัมน์ที่อาจไม่อยู่ใน Supabase schema เดิม — กรองออกก่อน insert
+# (User ค่อย ALTER TABLE เพิ่มทีหลังถ้าอยาก persist)
+_NEW_FIELDS = ('dense_area_pct', 'dense_area_km2')
+
+
+def _strip_new(d: dict) -> dict:
+    """ตัด field ใหม่ออกก่อน insert ลง Supabase (กัน schema mismatch)"""
+    return {k: v for k, v in d.items() if k not in _NEW_FIELDS}
+
+
+def _is_stale(row: dict) -> bool:
+    """Cache row ที่ควร invalidate และคำนวณใหม่.
+
+    เกณฑ์:
+      - ขาด field สำคัญ (green_area_pct, total_area_km2)
+      - NDVI Min ต่ำกว่า −0.1 = น่าจะคำนวณก่อนยุค water mask (เก่า) → ต้องคำนวณใหม่
+    """
+    if row.get("green_area_pct") is None or row.get("total_area_km2") is None:
+        return True
+    # ตรวจสอบ logic version ผ่าน ndvi_min — เริ่ม mask water ที่ >= 0.0 แล้ว
+    # ถ้าเจอ min < -0.05 = cache เก่าก่อนยุค water mask
+    nm = row.get("ndvi_min")
+    if nm is not None and nm < -0.05:
+        return True
+    return False
 
 
 # ── Shared compute helpers ───────────────────────────────────────────────────
@@ -30,34 +56,55 @@ def _compute_ndvi_annual(geom: ee.Geometry, year: int, scale: int):
         if col.size().getInfo() == 0:
             return None
 
-    ndvi = col.median().clip(geom).normalizedDifference(['B8', 'B4']).rename('NDVI')
-    stats = ndvi.reduceRegion(
+    median = col.median().clip(geom)
+    ndvi_raw = median.normalizedDifference(['B8', 'B4']).rename('NDVI')
+
+    # Mask water + cloud-shadow pixels: NDVI < 0 บนบกแทบเป็นไปไม่ได้ที่ไม่ใช่ artifact
+    # tileScale=4 ลด downsampling artifacts ที่ทำให้ mask ไม่ apply ครบทุก pixel
+    water_mask = ndvi_raw.gte(0.0)
+    ndvi_land = ndvi_raw.updateMask(water_mask)
+
+    stats = ndvi_land.reduceRegion(
         reducer=ee.Reducer.mean()
                 .combine(ee.Reducer.min(), '', True)
                 .combine(ee.Reducer.max(), '', True),
-        geometry=geom, scale=scale, maxPixels=1e10, bestEffort=True).getInfo()
+        geometry=geom, scale=scale, maxPixels=1e10,
+        bestEffort=True, tileScale=4).getInfo()
 
     ndvi_mean = round(stats.get('NDVI_mean') or 0, 4)
     ndvi_min  = round(stats.get('NDVI_min')  or 0, 4)
     ndvi_max  = round(stats.get('NDVI_max')  or 0, 4)
-    green_mask = ndvi.gt(0.3)
 
-    total_area_m2 = (ee.Image.pixelArea().clip(geom)
-                     .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
+    # Two thresholds: 0.3 (vegetation incl. crops) and 0.5 (dense forest)
+    green_mask = ndvi_raw.gt(0.3)
+    dense_mask = ndvi_raw.gt(0.5)
+
+    pixel_area = ee.Image.pixelArea().clip(geom)
+    reducer = ee.Reducer.sum()
+
+    total_area_m2 = (pixel_area
+                     .reduceRegion(reducer=reducer, geometry=geom,
                                    scale=scale, maxPixels=1e10, bestEffort=True)
                      .get('area').getInfo())
-    green_area_m2 = (ee.Image.pixelArea().updateMask(green_mask).clip(geom)
-                     .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
+    green_area_m2 = (pixel_area.updateMask(green_mask)
+                     .reduceRegion(reducer=reducer, geometry=geom,
+                                   scale=scale, maxPixels=1e10, bestEffort=True)
+                     .get('area').getInfo())
+    dense_area_m2 = (pixel_area.updateMask(dense_mask)
+                     .reduceRegion(reducer=reducer, geometry=geom,
                                    scale=scale, maxPixels=1e10, bestEffort=True)
                      .get('area').getInfo())
 
     total_area_km2 = round((total_area_m2 or 0) / 1_000_000, 2)
     green_area_km2 = round((green_area_m2 or 0) / 1_000_000, 2)
+    dense_area_km2 = round((dense_area_m2 or 0) / 1_000_000, 2)
     green_area_pct = round(((green_area_m2 or 0) / total_area_m2) * 100, 1) if total_area_m2 else 0
+    dense_area_pct = round(((dense_area_m2 or 0) / total_area_m2) * 100, 1) if total_area_m2 else 0
 
     return {
         "ndvi_mean": ndvi_mean, "ndvi_min": ndvi_min, "ndvi_max": ndvi_max,
         "green_area_pct": green_area_pct, "green_area_km2": green_area_km2,
+        "dense_area_pct": dense_area_pct, "dense_area_km2": dense_area_km2,
         "total_area_km2": total_area_km2,
         "green_area_m2_raw": green_area_m2,
     }
@@ -73,8 +120,11 @@ def _compute_ndvi_monthly(geom: ee.Geometry, year: int, scale: int):
                .filter(ee.Filter.calendarRange(year, year, 'year'))
                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
                .map(mask_s2_clouds))
-        ndvi = (col.median()
-                .normalizedDifference(['B8', 'B4'])
+        # เติม B8/B4 placeholder กัน normalizedDifference พังตอน col ว่าง
+        median = col.median().addBands(
+            ee.Image.constant([0, 0]).rename(['B8', 'B4']).selfMask(),
+            overwrite=False)
+        ndvi = (median.normalizedDifference(['B8', 'B4'])
                 .rename('NDVI')
                 .reduceRegion(reducer=ee.Reducer.mean(), geometry=geom,
                               scale=scale, maxPixels=1e10, bestEffort=True)
@@ -104,13 +154,12 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: int 
         raise HTTPException(status_code=404,
                             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("district_ndvi_monthly")
-              .select("*")
-              .eq("province", province_name)
-              .eq("district", district_name)
-              .eq("year", year)
-              .execute())
+    cached = supa_call(lambda s: s.table("district_ndvi_monthly")
+                       .select("*")
+                       .eq("province", province_name)
+                       .eq("district", district_name)
+                       .eq("year", year)
+                       .execute())
     if cached.data:
         print(f"✅ Supabase hit: {province_name}/{district_name}/{year}/monthly")
         return {
@@ -122,10 +171,10 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: int 
     print(f"⏳ Computing district monthly: {province_name}/{district_name}/{year}")
     try:
         results = _compute_ndvi_monthly(ee.Geometry(raw_geom), year, scale=100)
-        supabase.table("district_ndvi_monthly").insert({
+        supa_call(lambda s: s.table("district_ndvi_monthly").insert({
             "province": province_name, "district": district_name,
             "year": year, "monthly_data": results,
-        }).execute()
+        }).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
@@ -141,16 +190,15 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
         raise HTTPException(status_code=404,
                             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("district_ndvi_annual")
-              .select("*")
-              .eq("province", province_name)
-              .eq("district", district_name)
-              .eq("year", year)
-              .execute())
+    cached = supa_call(lambda s: s.table("district_ndvi_annual")
+                       .select("*")
+                       .eq("province", province_name)
+                       .eq("district", district_name)
+                       .eq("year", year)
+                       .execute())
     if cached.data:
         row = cached.data[0]
-        if row.get("green_area_pct") is not None and row.get("total_area_km2") is not None:
+        if not _is_stale(row):
             print(f"✅ Supabase hit: {province_name}/{district_name}/{year}")
             return {
                 "province": province_name, "district": district_name, "year": year,
@@ -161,7 +209,8 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
                 "total_area_km2": row.get("total_area_km2"),
                 "from_cache": True, "cached_at": row["created_at"],
             }
-        supabase.table("district_ndvi_annual").delete().eq("id", row["id"]).execute()
+        print(f"♻️ Stale cache (district): {province_name}/{district_name}/{year} — recomputing")
+        supa_call(lambda s: s.table("district_ndvi_annual").delete().eq("id", row["id"]).execute())
 
     print(f"⏳ Computing district annual: {province_name}/{district_name}/{year}")
     try:
@@ -171,10 +220,10 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
                 detail=f"ไม่พบข้อมูลภาพดาวเทียมสำหรับ {district_name} ในปี {year}")
         result.pop('green_area_m2_raw', None)
 
-        supabase.table("district_ndvi_annual").insert({
+        supa_call(lambda s: s.table("district_ndvi_annual").insert({
             "province": province_name, "district": district_name, "year": year,
-            **result,
-        }).execute()
+            **_strip_new(result),
+        }).execute())
 
         return {
             "province": province_name, "district": district_name, "year": year,
@@ -194,9 +243,8 @@ def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("ndvi_monthly")
-              .select("*").eq("province", province_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("ndvi_monthly")
+                       .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
         print(f"✅ Supabase hit: {province_name}/{year}/monthly")
         return {
@@ -208,9 +256,9 @@ def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
     print(f"⏳ Computing: {province_name}/{year}/monthly")
     try:
         results = _compute_ndvi_monthly(ee.Geometry(raw_geom), year, scale=500)
-        supabase.table("ndvi_monthly").insert({
+        supa_call(lambda s: s.table("ndvi_monthly").insert({
             "province": province_name, "year": year, "monthly_data": results,
-        }).execute()
+        }).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
     except Exception as e:
@@ -227,13 +275,12 @@ def get_ndvi_compare(province_name: str,
     if not year_list:
         raise HTTPException(status_code=400, detail="years ต้องเป็นตัวเลขคั่นด้วย comma")
 
-    supabase = get_supabase()
-    result = (supabase.table("ndvi_annual")
-              .select("year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person,who_status")
-              .eq("province", province_name)
-              .in_("year", year_list)
-              .order("year")
-              .execute())
+    result = supa_call(lambda s: s.table("ndvi_annual")
+                       .select("year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person,who_status")
+                       .eq("province", province_name)
+                       .in_("year", year_list)
+                       .order("year")
+                       .execute())
     found = {row["year"]: row for row in result.data}
     data = [
         {"year": y, "available": True, **found[y]} if y in found
@@ -250,14 +297,13 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("ndvi_annual")
-              .select("*").eq("province", province_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("ndvi_annual")
+                       .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
-        if row.get("green_area_pct") is None or row.get("total_area_km2") is None:
+        if _is_stale(row):
             print(f"♻️ Stale cache: {province_name}/{year} — recomputing")
-            supabase.table("ndvi_annual").delete().eq("id", row["id"]).execute()
+            supa_call(lambda s: s.table("ndvi_annual").delete().eq("id", row["id"]).execute())
         else:
             print(f"✅ Supabase hit: {province_name}/{year}")
             return {
@@ -281,7 +327,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
                 detail=f"ไม่พบข้อมูลภาพดาวเทียมสำหรับ {province_name} ในปี {year}")
 
         green_area_m2 = result.pop('green_area_m2_raw', None)
-        population = get_population(supabase, province_name, year)
+        population = get_population(get_supabase(), province_name, year)
         if population and green_area_m2:
             m2_per_person = round(green_area_m2 / population, 2)
             who_status = (f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"
@@ -294,9 +340,9 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
                 "green_area_m2_per_person": m2_per_person,
                 "population": population, "who_status": who_status}
 
-        supabase.table("ndvi_annual").insert({
-            "province": province_name, "year": year, **full,
-        }).execute()
+        supa_call(lambda s: s.table("ndvi_annual").insert({
+            "province": province_name, "year": year, **_strip_new(full),
+        }).execute())
 
         return {"province": province_name, "year": year, **full, "from_cache": False}
     except HTTPException:

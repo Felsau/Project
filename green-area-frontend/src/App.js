@@ -160,8 +160,9 @@ function App() {
             controller={true}
             layers={layers}
             getCursor={getCursor}
+            glOptions={{ preserveDrawingBuffer: true }}
           >
-            <Map mapStyle={MAP_STYLE} />
+            <Map mapStyle={MAP_STYLE} preserveDrawingBuffer={true} />
           </DeckGL>
 
           {tooltip && <MapTooltip tooltip={tooltip} />}
