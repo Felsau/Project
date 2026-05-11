@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 import traceback
 import ee
 
-from dependencies import (get_supabase, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, MONTH_NAMES)
 from gee_utils import get_lst_col, reduce_lst, scale_lst
 
@@ -32,9 +32,12 @@ def _compute_lst_monthly(geom: ee.Geometry, year: int, scale: int):
     def by_month(m):
         m_int = ee.Number(m).toInt()
         col = build_col(m_int)
-        lst = (col.median()
-               .reduceRegion(reducer=ee.Reducer.mean(), geometry=geom,
-                             scale=scale, maxPixels=1e10, bestEffort=True)
+        # เติม LST band ที่ถูก mask ไว้ กัน reduceRegion ไม่มี key ตอน col ว่าง
+        img = col.median().addBands(
+            ee.Image.constant(0).rename('LST').selfMask(),
+            overwrite=False)
+        lst = (img.reduceRegion(reducer=ee.Reducer.mean(), geometry=geom,
+                                scale=scale, maxPixels=1e10, bestEffort=True)
                .get('LST'))
         return ee.Feature(None, {'month_num': m_int, 'count': col.size(), 'lst': lst})
 
@@ -61,10 +64,9 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
         raise HTTPException(status_code=404,
             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("district_lst_monthly")
-              .select("*").eq("province", province_name)
-              .eq("district", district_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("district_lst_monthly")
+                       .select("*").eq("province", province_name)
+                       .eq("district", district_name).eq("year", year).execute())
     if cached.data:
         return {"province": province_name, "district": district_name, "year": year,
                 "monthly": cached.data[0]["monthly_data"], "from_cache": True}
@@ -72,9 +74,9 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
     print(f"⏳ Computing district LST monthly: {province_name}/{district_name}/{year}")
     try:
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=100)
-        supabase.table("district_lst_monthly").insert({
+        supa_call(lambda s: s.table("district_lst_monthly").insert({
             "province": province_name, "district": district_name,
-            "year": year, "monthly_data": results}).execute()
+            "year": year, "monthly_data": results}).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
@@ -90,10 +92,9 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
         raise HTTPException(status_code=404,
             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("district_lst_annual")
-              .select("*").eq("province", province_name)
-              .eq("district", district_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("district_lst_annual")
+                       .select("*").eq("province", province_name)
+                       .eq("district", district_name).eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
         return {"province": province_name, "district": district_name, "year": year,
@@ -109,9 +110,9 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
                 detail=f"ไม่พบข้อมูล Landsat สำหรับ {district_name} ปี {year}")
         lst_mean, lst_min, lst_max = reduce_lst(col, geom, scale=100)
 
-        supabase.table("district_lst_annual").insert({
+        supa_call(lambda s: s.table("district_lst_annual").insert({
             "province": province_name, "district": district_name, "year": year,
-            "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute()
+            "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute())
         return {"province": province_name, "district": district_name, "year": year,
                 "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
                 "from_cache": False}
@@ -129,9 +130,8 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("province_lst_monthly")
-              .select("*").eq("province", province_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("province_lst_monthly")
+                       .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
         print(f"✅ LST cache hit: {province_name}/{year}/monthly")
         return {"province": province_name, "year": year,
@@ -140,8 +140,8 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
     print(f"⏳ Computing LST monthly: {province_name}/{year}")
     try:
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=500)
-        supabase.table("province_lst_monthly").insert(
-            {"province": province_name, "year": year, "monthly_data": results}).execute()
+        supa_call(lambda s: s.table("province_lst_monthly").insert(
+            {"province": province_name, "year": year, "monthly_data": results}).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
     except Exception as e:
@@ -156,9 +156,8 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
 
-    supabase = get_supabase()
-    cached = (supabase.table("province_lst_annual")
-              .select("*").eq("province", province_name).eq("year", year).execute())
+    cached = supa_call(lambda s: s.table("province_lst_annual")
+                       .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
         print(f"✅ LST cache hit: {province_name}/{year}")
@@ -175,9 +174,9 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
                 detail=f"ไม่พบข้อมูล Landsat สำหรับ {province_name} ปี {year}")
         lst_mean, lst_min, lst_max = reduce_lst(col, geom, scale=500)
 
-        supabase.table("province_lst_annual").insert(
+        supa_call(lambda s: s.table("province_lst_annual").insert(
             {"province": province_name, "year": year,
-             "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute()
+             "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute())
         return {"province": province_name, "year": year,
                 "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
                 "from_cache": False}

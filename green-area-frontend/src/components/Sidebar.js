@@ -1,6 +1,79 @@
+import { useState } from 'react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { PROVINCE_TH, AVAILABLE_YEARS } from '../constants';
 import { getNdviColor, getNdviLabel, getLstColor, getLstLabel } from '../colorUtils';
+import {
+  exportStatsCsv, exportTrendCsv, exportCompareCsv, exportRankingCsv, exportRecommendCsv,
+  exportElementPng, exportTabWithMapPng,
+} from '../utils/exportUtils';
+import {
+  buildStatsReport, buildTrendReport, buildCompareReport,
+  buildRankingReport, buildRecommendReport,
+} from '../utils/reportPdf';
+
+function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap = true }) {
+  const [busy, setBusy] = useState(null);
+
+  const run = async (kind, fn) => {
+    if (busy) return;
+    setBusy(kind);
+    try {
+      await fn();
+    } catch (e) {
+      console.error(e);
+      alert('Export ไม่สำเร็จ: ' + (e?.message || e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const btn = (active) => ({
+    flex: 1, minWidth: 0,
+    padding: '6px 8px',
+    border: '1px solid #dadce0',
+    background: active ? '#e8f0fe' : '#fff',
+    color: '#1a73e8',
+    borderRadius: '4px',
+    fontSize: '0.7rem',
+    cursor: busy ? 'wait' : 'pointer',
+    opacity: busy && !active ? 0.5 : 1,
+  });
+
+  return (
+    <div style={{ marginTop: '8px', borderTop: '1px solid #f1f3f4', paddingTop: '8px' }}>
+      <div style={{ fontSize: '0.7rem', color: '#5f6368', marginBottom: '4px', fontWeight: 600 }}>
+        ส่งออกข้อมูล
+      </div>
+      <div style={{ display: 'flex', gap: '4px' }}>
+        {onCsv && (
+          <button style={btn(busy === 'csv')} disabled={!!busy}
+            onClick={() => run('csv', async () => onCsv())}>
+            {busy === 'csv' ? '⏳' : '📄 CSV'}
+          </button>
+        )}
+        <button style={btn(busy === 'png')} disabled={!!busy}
+          onClick={() => run('png', () => exportElementPng(targetId, `${baseName}.png`))}>
+          {busy === 'png' ? '⏳' : '🖼 PNG'}
+        </button>
+        {onPdf && (
+          <button style={btn(busy === 'pdf')} disabled={!!busy}
+            onClick={() => run('pdf', () => onPdf())}>
+            {busy === 'pdf' ? '⏳' : '📕 PDF'}
+          </button>
+        )}
+        {includeMap && (
+          <button style={btn(busy === 'map')} disabled={!!busy}
+            onClick={() => run('map', () => exportTabWithMapPng(targetId, `${baseName}_with_map.png`))}>
+            {busy === 'map' ? '⏳' : '🗺 +แผนที่'}
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: '0.65rem', color: '#9aa0a6', marginTop: '4px', lineHeight: 1.4 }}>
+        * PDF เป็นรายงาน vector + ฟอนต์ไทย · PNG/+แผนที่ คือ snapshot
+      </div>
+    </div>
+  );
+}
 
 export default function Sidebar({ data, handlers }) {
   const {
@@ -45,7 +118,7 @@ export default function Sidebar({ data, handlers }) {
   if (!selectedProvince) {
     const cacheCount = Object.keys(ndviCache).length;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 2px', height: '100%', overflowY: 'auto' }}>
+      <div id="export-ranking" style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 2px', height: '100%', overflowY: 'auto' }}>
 
         {/* Header */}
         <div style={{ textAlign: 'center', paddingTop: '8px' }}>
@@ -149,6 +222,15 @@ export default function Sidebar({ data, handlers }) {
             <span style={{ color: '#1a73e8' }}>คลิกจังหวัดบนแผนที่</span><br />เพื่อดูข้อมูลเชิงลึก
           </p>
         )}
+
+        {rankingStats && (
+          <ExportBar
+            targetId="export-ranking"
+            baseName={`ranking_${rankingYear}`}
+            onCsv={() => exportRankingCsv({ rankingData, rankingYear, rankingStats })}
+            onPdf={() => buildRankingReport({ rankingData, rankingYear, rankingStats })}
+          />
+        )}
       </div>
     );
   }
@@ -190,7 +272,7 @@ export default function Sidebar({ data, handlers }) {
 
       {/* ── Stats Tab ── */}
       {sidebarTab === 'stats' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div id="export-stats" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           {/* District section */}
           {selectedDistrict && (
@@ -553,12 +635,29 @@ export default function Sidebar({ data, handlers }) {
             );
           })()}
 
+          <ExportBar
+            targetId="export-stats"
+            baseName={`stats_${(selectedDistrict || selectedProvinceEN || 'province').replace(/\s+/g, '_')}`}
+            onCsv={() => exportStatsCsv({
+              selectedProvince, selectedProvinceEN, selectedDistrict,
+              provinceArea, districtArea,
+              ndviStats, ndviMonthly, lstStats, lstMonthly,
+              districtNdviStats, districtNdviMonthly, districtLstStats, districtLstMonthly,
+            })}
+            onPdf={() => buildStatsReport({
+              selectedProvince, selectedProvinceEN, selectedDistrict,
+              provinceArea, districtArea,
+              ndviStats, ndviMonthly, lstStats, lstMonthly,
+              districtNdviStats, districtNdviMonthly,
+              districtLstStats, districtLstMonthly,
+            })}
+          />
         </div>
       )}
 
       {/* ── Trend Tab ── */}
       {sidebarTab === 'trend' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div id="export-trend" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="chart-title">แนวโน้มรายปี · {selectedProvince}</div>
           {selectedDistrict && (
             <div style={{ fontSize: '0.75rem', color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '6px 10px' }}>
@@ -609,12 +708,21 @@ export default function Sidebar({ data, handlers }) {
           ) : (
             <p className="data-note">กดปุ่มเพื่อโหลดข้อมูลจากปีที่เลือก</p>
           )}
+
+          {trendData.length > 0 && (
+            <ExportBar
+              targetId="export-trend"
+              baseName={`trend_${selectedProvinceEN || 'province'}`}
+              onCsv={() => exportTrendCsv({ selectedProvince, selectedProvinceEN, trendData, trendMetric })}
+              onPdf={() => buildTrendReport({ selectedProvince, selectedProvinceEN, trendData, trendMetric })}
+            />
+          )}
         </div>
       )}
 
       {/* ── Compare Tab ── */}
       {sidebarTab === 'compare' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div id="export-compare" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="chart-title">เปรียบเทียบจังหวัด</div>
           {selectedDistrict && (
             <div style={{ fontSize: '0.75rem', color: '#f59e0b', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '6px 10px' }}>
@@ -679,12 +787,21 @@ export default function Sidebar({ data, handlers }) {
               <p className="data-note">* แสดงเฉพาะจังหวัดที่มีข้อมูลใน cache ({compareData.length}/{compareList.length} จังหวัด)</p>
             </div>
           )}
+
+          {compareData.length > 0 && (
+            <ExportBar
+              targetId="export-compare"
+              baseName={`compare_${compareYear}`}
+              onCsv={() => exportCompareCsv({ compareData, compareYear, compareMetric })}
+              onPdf={() => buildCompareReport({ compareData, compareYear, compareMetric })}
+            />
+          )}
         </div>
       )}
 
       {/* ── Recommend Tab ── */}
       {sidebarTab === 'recommend' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div id="export-recommend" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ background: 'linear-gradient(135deg,#1a73e8,#22c55e)', borderRadius: '8px', padding: '12px', color: 'white' }}>
             <div style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '4px' }}>
               🤖 AI Planting Recommendation
@@ -782,6 +899,53 @@ export default function Sidebar({ data, handlers }) {
                 </p>
               </div>
 
+              {/* Recommended tree species */}
+              {recommendData.recommended_species?.species?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '600', color: '#202124', marginBottom: '6px' }}>
+                    🌳 พันธุ์ไม้แนะนำ
+                    {recommendData.recommended_species.region && (
+                      <span style={{ fontSize: '0.7rem', color: '#5f6368', fontWeight: '400', marginLeft: '6px' }}>
+                        (เหมาะกับภาค{recommendData.recommended_species.region})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {recommendData.recommended_species.species.map((sp, i) => (
+                      <div key={i} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1f2937' }}>
+                            {sp.name_th}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', fontStyle: 'italic', color: '#9aa0a6' }}>
+                            {sp.scientific}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', background: '#dbeafe', color: '#1e40af', borderRadius: '10px', fontWeight: '500' }}>
+                            {sp.purpose}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', padding: '2px 6px', background: '#f3f4f6', color: '#5f6368', borderRadius: '10px' }}>
+                            สูง {sp.height_m} ม.
+                          </span>
+                          {sp.traits?.map((t, j) => (
+                            <span key={j} style={{ fontSize: '0.65rem', padding: '2px 6px', background: '#dcfce7', color: '#166534', borderRadius: '10px' }}>
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#5f6368', lineHeight: 1.5 }}>
+                          💡 {sp.reason}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="data-note" style={{ marginTop: '6px' }}>
+                    * คัดเลือกจากพันธุ์ที่เหมาะกับภูมิอากาศและดินของแต่ละภาค
+                  </p>
+                </div>
+              )}
+
               {recommendData.from_cache && (
                 <div style={{ fontSize: '0.7rem', color: '#9aa0a6', textAlign: 'center' }}>
                   ⚡ จาก cache · {new Date(recommendData.cached_at).toLocaleString('th')}
@@ -798,6 +962,15 @@ export default function Sidebar({ data, handlers }) {
               • Landsat 8/9 LST<br />
               • WorldPop population density 100m
             </p>
+          )}
+
+          {recommendData && (
+            <ExportBar
+              targetId="export-recommend"
+              baseName={`recommend_${(selectedDistrict || selectedProvinceEN || 'thailand').replace(/\s+/g, '_')}`}
+              onCsv={() => exportRecommendCsv({ recommendData, selectedProvinceEN, selectedDistrict })}
+              onPdf={() => buildRecommendReport({ recommendData, selectedProvince, selectedProvinceEN, selectedDistrict })}
+            />
           )}
         </div>
       )}
