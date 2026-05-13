@@ -5,6 +5,7 @@ import ee
 from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, MONTH_NAMES)
 from gee_utils import get_lst_col, reduce_lst, scale_lst
+from schemas import LSTResponse, LSTMonthlyResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
 
 
 # ── Province LST monthly ─────────────────────────────────────────────────────
-@router.get("/lst/{province_name}/monthly")
+@router.get("/lst/{province_name}/monthly", response_model=LSTMonthlyResponse)
 def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
@@ -151,7 +152,7 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
 
 
 # ── Province LST annual ──────────────────────────────────────────────────────
-@router.get("/lst/{province_name}")
+@router.get("/lst/{province_name}", response_model=LSTResponse)
 def get_lst(province_name: str, year: int = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:

@@ -327,8 +327,10 @@ def _load_thailand_geojson():
     global _THAILAND_GEOJSON
     if _THAILAND_GEOJSON is not None:
         return _THAILAND_GEOJSON
-    path = os.path.join(os.path.dirname(__file__),
-                        '..', '..', 'green-area-frontend', 'public', 'thailand.json')
+    # ใช้ env var ถ้าตั้ง — fallback ไป frontend/public (dev local แบบ monorepo)
+    path = os.getenv('THAILAND_GEOJSON_PATH') or os.path.join(
+        os.path.dirname(__file__),
+        '..', '..', 'green-area-frontend', 'public', 'thailand.json')
     if not os.path.exists(path):
         return None
     with open(path, encoding='utf-8') as f:

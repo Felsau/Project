@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR)
 from routers import ndvi, lst, recommend, maps
+from schemas import RankingResponse
 
 GEE_PROJECT = os.getenv("GEE_PROJECT")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
@@ -127,7 +128,7 @@ def clear_province_cache(province_name: str):
     return {"message": f"✅ Cache cleared for {province_name}"}
 
 
-@app.get("/analysis/ranking")
+@app.get("/analysis/ranking", response_model=RankingResponse)
 def get_ranking(year: int = CURRENT_YEAR):
     result = supa_call(lambda s: s.table("ndvi_annual")
                        .select("province,ndvi_mean,green_area_pct,green_area_km2,green_area_m2_per_person,who_status,population,total_area_km2")
