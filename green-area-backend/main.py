@@ -1,8 +1,23 @@
+import logging
 import os
+import sys
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import ee
+
+# Logging — UTF-8 handler (รองรับ emoji + ไทย บน Windows console)
+# ตั้งก่อน import router เพื่อให้ทุก module ใช้ config เดียวกัน
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, OSError):
+    pass
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR)
@@ -22,13 +37,13 @@ app.add_middleware(
 )
 
 if not GEE_PROJECT:
-    print("⚠️  ไม่พบ GEE_PROJECT ใน .env — endpoint ที่ต้องใช้ GEE จะใช้งานไม่ได้")
+    logger.warning("⚠️  ไม่พบ GEE_PROJECT ใน .env — endpoint ที่ต้องใช้ GEE จะใช้งานไม่ได้")
 else:
     try:
         ee.Initialize(project=GEE_PROJECT)
-        print(f"✅ GEE เชื่อมต่อสำเร็จ (project: {GEE_PROJECT})")
+        logger.info("✅ GEE เชื่อมต่อสำเร็จ (project: %s)", GEE_PROJECT)
     except Exception as e:
-        print(f"❌ GEE เชื่อมต่อไม่สำเร็จ: {e}")
+        logger.error("❌ GEE เชื่อมต่อไม่สำเร็จ: %s", e)
 
 app.include_router(ndvi.router)
 app.include_router(lst.router)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { FlyToInterpolator } from '@deck.gl/core';
 import Map from 'react-map-gl/maplibre';
@@ -17,6 +17,8 @@ import { buildMapLayers }  from './utils/mapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
 import MapTooltip from './components/MapTooltip';
+import Toast      from './components/Toast';
+import { pushError } from './utils/toast';
 
 function App() {
   const [thailandData, setThailandData] = useState(null);
@@ -37,7 +39,10 @@ function App() {
     fetch('/thailand.json')
       .then(r => r.json())
       .then(data => { setThailandData(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setLoading(false);
+        pushError('โหลดขอบเขตจังหวัดไม่สำเร็จ — รีเฟรชหน้าเว็บใหม่');
+      });
   }, []);
 
   const showingDistricts = !!(province.selectedProvinceEN && district.districtsData);
@@ -60,7 +65,8 @@ function App() {
   const handleViewStateChange = useCallback(({ viewState: vs }) => setViewState(vs), []);
   const getCursor = useCallback(({ isHovering }) => (isHovering ? 'pointer' : 'default'), []);
 
-  const layers = buildMapLayers({
+  // Memoize layers — DeckGL จะ diff ทุก frame ถ้า array reference เปลี่ยน
+  const layers = useMemo(() => buildMapLayers({
     thailandData, ndviCache,
     selectedProvinceEN:    province.selectedProvinceEN,
     setSelectedProvince:   province.setSelectedProvince,
@@ -82,7 +88,14 @@ function App() {
     setViewState, setTooltip, setSidebarTab,
     recommendData:    recommend.recommendData,
     recommendVisible: recommend.recommendVisible,
-  });
+  }), [
+    thailandData, ndviCache,
+    province.selectedProvinceEN,
+    district.districtsData, district.districtCache, district.selectedDistrictEN,
+    showingDistricts,
+    recommend.recommendData, recommend.recommendVisible,
+    // setter/fetch refs จาก hooks เสถียร (useCallback) — ไม่ต้องใส่
+  ]);
 
   const sidebarData = {
     selectedProvince:     province.selectedProvince,
@@ -123,6 +136,7 @@ function App() {
     recommendLoading: recommend.recommendLoading,
     recommendVisible: recommend.recommendVisible,
     recommendScope:   recommend.recommendScope,
+    recommendYear:    recommend.recommendYear,
   };
 
   const sidebarHandlers = {
@@ -142,11 +156,13 @@ function App() {
     onFetchRecommend:    recommend.fetchRecommendation,
     onToggleRecommend:   () => recommend.setRecommendVisible(v => !v),
     onClearRecommend:    recommend.resetRecommend,
+    setRecommendYear:    recommend.setRecommendYear,
   };
 
   return (
     <div className="App">
       <AppHeader loading={loading} />
+      <Toast />
 
       <div className="main-layout">
         <aside className="sidebar">

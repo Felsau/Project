@@ -5,10 +5,12 @@ from dotenv import load_dotenv
 from datetime import datetime
 import httpx
 import json
+import logging
 import os
 import time
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 CURRENT_YEAR = datetime.now().year
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -63,7 +65,8 @@ def supa_call(builder_fn, retries: int = 1):
         except _TRANSIENT_ERRORS as e:
             last_exc = e
             if attempt < retries:
-                print(f"⚠️  Supabase {type(e).__name__}: {e} — recreate client + retry ({attempt + 1}/{retries})")
+                logger.warning("⚠️  Supabase %s: %s — recreate client + retry (%d/%d)",
+                               type(e).__name__, e, attempt + 1, retries)
                 # ทิ้ง client เก่าทั้ง connection pool แล้วสร้างใหม่ในรอบถัดไป
                 get_supabase.cache_clear()
                 time.sleep(0.3 * (attempt + 1))  # backoff สั้นๆ
@@ -104,7 +107,7 @@ def _load_district_geometries() -> dict:
     path = os.path.join(os.path.dirname(__file__),
                         '..', 'green-area-frontend', 'public', 'thailand_districts.json')
     if not os.path.exists(path):
-        print("⚠️  thailand_districts.json ไม่พบ — รัน generate_districts.py ก่อน")
+        logger.warning("⚠️  thailand_districts.json ไม่พบ — รัน generate_districts.py ก่อน")
         return {}
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
@@ -118,7 +121,7 @@ def _load_district_geometries() -> dict:
 
 
 PROVINCE_GEOMETRIES = _load_province_geometries()
-print(f"✅ โหลดขอบเขต {len(PROVINCE_GEOMETRIES)} จังหวัดจาก GADM")
+logger.info("✅ โหลดขอบเขต %d จังหวัดจาก GADM", len(PROVINCE_GEOMETRIES))
 
 DISTRICT_GEOMETRIES = _load_district_geometries()
-print(f"✅ โหลดขอบเขต {len(DISTRICT_GEOMETRIES)} อำเภอ")
+logger.info("✅ โหลดขอบเขต %d อำเภอ", len(DISTRICT_GEOMETRIES))

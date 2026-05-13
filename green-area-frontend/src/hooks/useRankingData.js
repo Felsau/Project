@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useRankingData() {
   const [rankingData, setRankingData]   = useState([]);
@@ -23,6 +24,7 @@ export function useRankingData() {
     } catch (e) {
       setRankingData([]);
       setRankingStats(null);
+      pushError(`โหลดอันดับจังหวัดปี ${y} ไม่สำเร็จ`);
     } finally {
       setRankingLoading(false);
     }

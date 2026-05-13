@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-import traceback
+import logging
 import ee
 
 from dependencies import (get_supabase, get_population, supa_call,
@@ -8,6 +8,7 @@ from dependencies import (get_supabase, get_population, supa_call,
 from gee_utils import mask_s2_clouds
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _is_stale(row: dict) -> bool:
@@ -152,14 +153,14 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: int 
                        .eq("year", year)
                        .execute())
     if cached.data:
-        print(f"✅ Supabase hit: {province_name}/{district_name}/{year}/monthly")
+        logger.info("✅ Supabase hit: %s/%s/%d/monthly", province_name, district_name, year)
         return {
             "province": province_name, "district": district_name, "year": year,
             "monthly": cached.data[0]["monthly_data"],
             "from_cache": True, "cached_at": cached.data[0]["created_at"],
         }
 
-    print(f"⏳ Computing district monthly: {province_name}/{district_name}/{year}")
+    logger.info("⏳ Computing district monthly: %s/%s/%d", province_name, district_name, year)
     try:
         results = _compute_ndvi_monthly(ee.Geometry(raw_geom), year, scale=100)
         supa_call(lambda s: s.table("district_ndvi_monthly").insert({
@@ -169,7 +170,7 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: int 
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
-        print(f"❌ Error district monthly [{province_name}/{district_name}/{year}]: {traceback.format_exc()}")
+        logger.error("❌ Error district monthly [%s/%s/%d]", province_name, district_name, year, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -190,7 +191,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
     if cached.data:
         row = cached.data[0]
         if not _is_stale(row):
-            print(f"✅ Supabase hit: {province_name}/{district_name}/{year}")
+            logger.info("✅ Supabase hit: %s/%s/%d", province_name, district_name, year)
             return {
                 "province": province_name, "district": district_name, "year": year,
                 "ndvi_mean": row["ndvi_mean"], "ndvi_min": row["ndvi_min"],
@@ -200,10 +201,10 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
                 "total_area_km2": row.get("total_area_km2"),
                 "from_cache": True, "cached_at": row["created_at"],
             }
-        print(f"♻️ Stale cache (district): {province_name}/{district_name}/{year} — recomputing")
+        logger.info("♻️ Stale cache (district): %s/%s/%d — recomputing", province_name, district_name, year)
         supa_call(lambda s: s.table("district_ndvi_annual").delete().eq("id", row["id"]).execute())
 
-    print(f"⏳ Computing district annual: {province_name}/{district_name}/{year}")
+    logger.info("⏳ Computing district annual: %s/%s/%d", province_name, district_name, year)
     try:
         result = _compute_ndvi_annual(ee.Geometry(raw_geom), year, scale=100)
         if result is None:
@@ -223,7 +224,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error district [{province_name}/{district_name}/{year}]: {traceback.format_exc()}")
+        logger.error("❌ Error district [%s/%s/%d]", province_name, district_name, year, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -237,14 +238,14 @@ def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
     cached = supa_call(lambda s: s.table("ndvi_monthly")
                        .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
-        print(f"✅ Supabase hit: {province_name}/{year}/monthly")
+        logger.info("✅ Supabase hit: %s/%d/monthly", province_name, year)
         return {
             "province": province_name, "year": year,
             "monthly": cached.data[0]["monthly_data"],
             "from_cache": True, "cached_at": cached.data[0]["created_at"],
         }
 
-    print(f"⏳ Computing: {province_name}/{year}/monthly")
+    logger.info("⏳ Computing: %s/%d/monthly", province_name, year)
     try:
         results = _compute_ndvi_monthly(ee.Geometry(raw_geom), year, scale=500)
         supa_call(lambda s: s.table("ndvi_monthly").insert({
@@ -293,10 +294,10 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
     if cached.data:
         row = cached.data[0]
         if _is_stale(row):
-            print(f"♻️ Stale cache: {province_name}/{year} — recomputing")
+            logger.info("♻️ Stale cache: %s/%d — recomputing", province_name, year)
             supa_call(lambda s: s.table("ndvi_annual").delete().eq("id", row["id"]).execute())
         else:
-            print(f"✅ Supabase hit: {province_name}/{year}")
+            logger.info("✅ Supabase hit: %s/%d", province_name, year)
             return {
                 "province": province_name, "year": year,
                 "ndvi_mean": row["ndvi_mean"], "ndvi_min": row["ndvi_min"],
@@ -310,7 +311,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
                 "from_cache": True, "cached_at": row["created_at"],
             }
 
-    print(f"⏳ Computing: {province_name}/{year}")
+    logger.info("⏳ Computing: %s/%d", province_name, year)
     try:
         result = _compute_ndvi_annual(ee.Geometry(raw_geom), year, scale=500)
         if result is None:
@@ -339,5 +340,5 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error [{province_name}/{year}]: {traceback.format_exc()}")
+        logger.error("❌ Error [%s/%d]", province_name, year, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
