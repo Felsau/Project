@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useCompareData() {
   const [compareList, setCompareList]       = useState([]);
@@ -17,6 +18,7 @@ export function useCompareData() {
       setCompareData(json.data.filter(d => d.available));
     } catch (err) {
       console.error('fetchCompareData error:', err);
+      pushError('โหลดข้อมูลเปรียบเทียบไม่สำเร็จ — ลองอีกครั้ง');
     } finally {
       setCompareLoading(false);
     }

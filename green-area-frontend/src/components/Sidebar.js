@@ -87,7 +87,7 @@ export default function Sidebar({ data, handlers }) {
     compareList, compareYear, compareData, compareLoading, compareMetric,
     ndviCache,
     rankingData = [], rankingStats = null, rankingLoading = false, rankingYear,
-    recommendData, recommendLoading, recommendVisible, recommendScope,
+    recommendData, recommendLoading, recommendVisible, recommendScope, recommendYear,
   } = data;
 
   const {
@@ -95,7 +95,7 @@ export default function Sidebar({ data, handlers }) {
     onToggleTrendYear, setTrendMetric, onFetchTrend,
     onAddToCompare, onRemoveFromCompare, setCompareMetric, setCompareYear, onFetchCompare,
     onFetchRanking, setRankingYear,
-    onFetchRecommend, onToggleRecommend, onClearRecommend,
+    onFetchRecommend, onToggleRecommend, onClearRecommend, setRecommendYear,
   } = handlers;
 
   const tabStyle = (id) => ({
@@ -812,9 +812,17 @@ export default function Sidebar({ data, handlers }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <select
+              value={recommendYear}
+              onChange={e => setRecommendYear(Number(e.target.value))}
+              disabled={recommendLoading}
+              style={{ width: '88px', border: '1px solid #dadce0', borderRadius: '4px', padding: '7px 6px', fontSize: '0.8rem', background: '#fff', color: '#202124' }}
+            >
+              {AVAILABLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
             <button
-              onClick={() => onFetchRecommend(selectedProvinceEN, selectedDistrict ? selectedDistrict : null)}
+              onClick={() => onFetchRecommend(selectedProvinceEN, selectedDistrict ? selectedDistrict : null, recommendYear)}
               disabled={recommendLoading}
               style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '4px', background: recommendLoading ? '#dadce0' : '#1a73e8', color: 'white', fontSize: '0.8rem', cursor: recommendLoading ? 'default' : 'pointer', fontWeight: '500' }}
             >

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-import traceback
+import logging
 import ee
 
 from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
@@ -7,6 +7,7 @@ from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
 from gee_utils import get_lst_col, reduce_lst, scale_lst
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ── Shared compute helper ────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
         return {"province": province_name, "district": district_name, "year": year,
                 "monthly": cached.data[0]["monthly_data"], "from_cache": True}
 
-    print(f"⏳ Computing district LST monthly: {province_name}/{district_name}/{year}")
+    logger.info("⏳ Computing district LST monthly: %s/%s/%d", province_name, district_name, year)
     try:
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=100)
         supa_call(lambda s: s.table("district_lst_monthly").insert({
@@ -80,7 +81,7 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
-        print(f"❌ District LST monthly error: {traceback.format_exc()}")
+        logger.error("❌ District LST monthly error", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -101,7 +102,7 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
                 "lst_mean": row["lst_mean"], "lst_min": row["lst_min"],
                 "lst_max": row["lst_max"], "from_cache": True}
 
-    print(f"⏳ Computing district LST: {province_name}/{district_name}/{year}")
+    logger.info("⏳ Computing district LST: %s/%s/%d", province_name, district_name, year)
     try:
         geom = ee.Geometry(raw_geom)
         col = get_lst_col(geom, year)
@@ -119,7 +120,7 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ District LST error: {traceback.format_exc()}")
+        logger.error("❌ District LST error", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -133,11 +134,11 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
     cached = supa_call(lambda s: s.table("province_lst_monthly")
                        .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
-        print(f"✅ LST cache hit: {province_name}/{year}/monthly")
+        logger.info("✅ LST cache hit: %s/%d/monthly", province_name, year)
         return {"province": province_name, "year": year,
                 "monthly": cached.data[0]["monthly_data"], "from_cache": True}
 
-    print(f"⏳ Computing LST monthly: {province_name}/{year}")
+    logger.info("⏳ Computing LST monthly: %s/%d", province_name, year)
     try:
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=500)
         supa_call(lambda s: s.table("province_lst_monthly").insert(
@@ -145,7 +146,7 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
     except Exception as e:
-        print(f"❌ LST monthly error: {traceback.format_exc()}")
+        logger.error("❌ LST monthly error", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -160,12 +161,12 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
                        .select("*").eq("province", province_name).eq("year", year).execute())
     if cached.data:
         row = cached.data[0]
-        print(f"✅ LST cache hit: {province_name}/{year}")
+        logger.info("✅ LST cache hit: %s/%d", province_name, year)
         return {"province": province_name, "year": year,
                 "lst_mean": row["lst_mean"], "lst_min": row["lst_min"],
                 "lst_max": row["lst_max"], "from_cache": True}
 
-    print(f"⏳ Computing LST annual: {province_name}/{year}")
+    logger.info("⏳ Computing LST annual: %s/%d", province_name, year)
     try:
         geom = ee.Geometry(raw_geom)
         col = get_lst_col(geom, year)
@@ -183,5 +184,5 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ LST error [{province_name}/{year}]: {traceback.format_exc()}")
+        logger.error("❌ LST error [%s/%d]", province_name, year, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

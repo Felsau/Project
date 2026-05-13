@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { API_BASE } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useProvinceData({ setNdviCache }) {
   const [selectedProvince, setSelectedProvince]     = useState(null);
@@ -39,6 +40,7 @@ export function useProvinceData({ setNdviCache }) {
       }
     } catch (err) {
       console.error('ดึงข้อมูล NDVI/LST ไม่สำเร็จ:', err);
+      pushError(`โหลดข้อมูลจังหวัด ${provinceName} ไม่สำเร็จ — ลองอีกครั้ง`);
     } finally {
       setNdviLoading(false);
       setLstLoading(false);

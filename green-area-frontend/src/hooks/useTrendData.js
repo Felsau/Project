@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useTrendData() {
   const [trendYears, setTrendYears]     = useState([CURRENT_YEAR - 2, CURRENT_YEAR - 1, CURRENT_YEAR]);
@@ -15,6 +16,7 @@ export function useTrendData() {
     setTrendProgress('');
     const sorted = [...years].sort((a, b) => a - b);
     const results = [];
+    const failedYears = [];
     for (let i = 0; i < sorted.length; i++) {
       const year = sorted[i];
       setTrendProgress(`กำลังโหลดปี ${year} (${i + 1}/${sorted.length})...`);
@@ -24,10 +26,16 @@ export function useTrendData() {
         if (json.ndvi_mean != null) {
           results.push({ year, ndvi_mean: json.ndvi_mean, green_area_pct: json.green_area_pct });
           setTrendData([...results]);
+        } else {
+          failedYears.push(year);
         }
       } catch (err) {
         console.error(`fetchTrend year ${year}:`, err);
+        failedYears.push(year);
       }
+    }
+    if (failedYears.length) {
+      pushError(`โหลด trend ปี ${failedYears.join(', ')} ไม่สำเร็จ`);
     }
     setTrendProgress('');
     setTrendLoading(false);

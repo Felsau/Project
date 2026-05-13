@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { API_BASE } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useDistrictData() {
   const [districtsData, setDistrictsData]               = useState(null);
@@ -25,6 +26,7 @@ export function useDistrictData() {
       setDistrictsData(data);
     } catch (err) {
       console.error('โหลด thailand_districts.json ไม่สำเร็จ:', err);
+      pushError('โหลดขอบเขตอำเภอไม่สำเร็จ — เช็คการเชื่อมต่อแล้วลองอีกครั้ง');
     } finally {
       setDistrictsLoading(false);
     }
@@ -54,6 +56,7 @@ export function useDistrictData() {
       });
     } catch (err) {
       console.error('โหลด district cache ไม่สำเร็จ:', err);
+      // ไม่ push error toast — cache load เงียบๆ ได้ ไม่กระทบ UX หลัก
     }
   };
 
@@ -85,6 +88,7 @@ export function useDistrictData() {
       }
     } catch (err) {
       console.error('ดึงข้อมูล NDVI/LST อำเภอไม่สำเร็จ:', err);
+      pushError(`โหลดข้อมูลอำเภอ ${districtName} ไม่สำเร็จ — ลองอีกครั้ง`);
     } finally {
       setDistrictNdviLoading(false);
       setDistrictLstLoading(false);

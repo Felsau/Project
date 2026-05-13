@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Response
 import httpx
 import io
 import json
+import logging
 import os
-import traceback
 import ee
 
 from dependencies import (get_supabase, supa_call, PROVINCE_GEOMETRIES,
@@ -20,6 +20,7 @@ ESA_BUILTUP_CLASS = 50
 WORLDPOP_YEAR = 2020  # ปีล่าสุดที่ WorldPop global มีข้อมูล
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Standard NDVI palette (vegetation)
 NDVI_PALETTE = ['#a50026', '#d73027', '#f46d43', '#fdae61', '#fee08b',
@@ -508,13 +509,13 @@ def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
             return q.execute()
         cached = supa_call(_cache_q)
         if cached.data:
-            print(f"✅ Urban cache hit: {scope}/{year}")
+            logger.info("✅ Urban cache hit: %s/%d", scope, year)
             row = cached.data[0]
             return {**row, "from_cache": True}
     except Exception as e:
-        print(f"⚠️ Urban cache lookup skipped (non-fatal): {e}")
+        logger.warning("⚠️ Urban cache lookup skipped (non-fatal): %s", e)
 
-    print(f"⏳ Computing urban subset: {scope}/{year}")
+    logger.info("⏳ Computing urban subset: %s/%d", scope, year)
     try:
         geom = ee.Geometry(raw_geom)
 
@@ -597,14 +598,14 @@ def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
         try:
             supa_call(lambda s: s.table("urban_ndvi_annual").insert(result).execute())
         except Exception as e:
-            print(f"⚠️ Urban cache insert failed (non-fatal — table อาจยังไม่ถูกสร้าง): {e}")
+            logger.warning("⚠️ Urban cache insert failed (non-fatal — table อาจยังไม่ถูกสร้าง): %s", e)
 
         return {**result, "from_cache": False}
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Urban subset error [{scope}/{year}]: {traceback.format_exc()}")
+        logger.error("❌ Urban subset error [%s/%d]", scope, year, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
