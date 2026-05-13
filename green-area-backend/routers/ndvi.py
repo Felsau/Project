@@ -2,10 +2,11 @@ from fastapi import APIRouter, HTTPException
 import logging
 import ee
 
-from dependencies import (get_supabase, get_population, supa_call,
+from dependencies import (get_population, supa_call,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, WHO_STANDARD_M2, MONTH_NAMES)
 from gee_utils import mask_s2_clouds
+from schemas import NDVIResponse, NDVIMonthlyResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -229,7 +230,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
 
 
 # ── Province NDVI monthly ────────────────────────────────────────────────────
-@router.get("/ndvi/{province_name}/monthly")
+@router.get("/ndvi/{province_name}/monthly", response_model=NDVIMonthlyResponse)
 def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
@@ -283,7 +284,7 @@ def get_ndvi_compare(province_name: str,
 
 
 # ── Province NDVI annual ─────────────────────────────────────────────────────
-@router.get("/ndvi/{province_name}")
+@router.get("/ndvi/{province_name}", response_model=NDVIResponse)
 def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
@@ -319,7 +320,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
                 detail=f"ไม่พบข้อมูลภาพดาวเทียมสำหรับ {province_name} ในปี {year}")
 
         green_area_m2 = result.pop('green_area_m2_raw', None)
-        population = get_population(get_supabase(), province_name, year)
+        population = get_population(province_name, year)
         if population and green_area_m2:
             m2_per_person = round(green_area_m2 / population, 2)
             who_status = (f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"

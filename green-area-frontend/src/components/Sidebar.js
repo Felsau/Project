@@ -679,13 +679,19 @@ export default function Sidebar({ data, handlers }) {
             <button style={metricBtnStyle(trendMetric === 'ndvi_mean')}      onClick={() => setTrendMetric('ndvi_mean')}>NDVI</button>
             <button style={metricBtnStyle(trendMetric === 'green_area_pct')} onClick={() => setTrendMetric('green_area_pct')}>พื้นที่สีเขียว %</button>
           </div>
-          <button
-            onClick={() => onFetchTrend(selectedProvinceEN, trendYears)}
-            disabled={trendYears.length === 0 || trendLoading}
-            style={{ padding: '8px', border: 'none', borderRadius: '4px', background: trendYears.length === 0 ? '#f1f3f4' : '#1a73e8', color: trendYears.length === 0 ? '#9aa0a6' : 'white', fontSize: '0.85rem', cursor: trendYears.length === 0 ? 'default' : 'pointer', fontWeight: '500' }}
-          >
-            {trendLoading ? '⏳ กำลังโหลด...' : '📈 ดูแนวโน้ม'}
-          </button>
+          {(() => {
+            const blocked = trendYears.length === 0 || trendLoading || !!selectedDistrict;
+            return (
+              <button
+                onClick={() => onFetchTrend(selectedProvinceEN, trendYears)}
+                disabled={blocked}
+                title={selectedDistrict ? 'ล้างอำเภอที่เลือกก่อนเพื่อดูแนวโน้มระดับจังหวัด' : undefined}
+                style={{ padding: '8px', border: 'none', borderRadius: '4px', background: blocked ? '#f1f3f4' : '#1a73e8', color: blocked ? '#9aa0a6' : 'white', fontSize: '0.85rem', cursor: blocked ? 'not-allowed' : 'pointer', fontWeight: '500' }}
+              >
+                {trendLoading ? '⏳ กำลังโหลด...' : '📈 ดูแนวโน้ม'}
+              </button>
+            );
+          })()}
           {trendLoading ? (
             <div style={{ background: '#f8f9fa', border: '1px solid #dadce0', borderRadius: '6px', padding: '12px' }}>
               <p className="data-note" style={{ marginTop: 0, fontStyle: 'normal', color: '#1a73e8' }}>⏳ {trendProgress}</p>
@@ -743,8 +749,9 @@ export default function Sidebar({ data, handlers }) {
             </div>
             <button
               onClick={() => onAddToCompare(selectedProvinceEN)}
-              disabled={compareList.includes(selectedProvinceEN)}
-              style={{ padding: '5px 12px', border: '1px solid #dadce0', borderRadius: '4px', background: compareList.includes(selectedProvinceEN) ? '#f1f3f4' : '#fff', color: compareList.includes(selectedProvinceEN) ? '#9aa0a6' : '#1a73e8', fontSize: '0.8rem', cursor: compareList.includes(selectedProvinceEN) ? 'default' : 'pointer' }}
+              disabled={compareList.includes(selectedProvinceEN) || !!selectedDistrict}
+              title={selectedDistrict ? 'ล้างอำเภอที่เลือกก่อนเพื่อเปรียบเทียบระดับจังหวัด' : undefined}
+              style={{ padding: '5px 12px', border: '1px solid #dadce0', borderRadius: '4px', background: (compareList.includes(selectedProvinceEN) || selectedDistrict) ? '#f1f3f4' : '#fff', color: (compareList.includes(selectedProvinceEN) || selectedDistrict) ? '#9aa0a6' : '#1a73e8', fontSize: '0.8rem', cursor: (compareList.includes(selectedProvinceEN) || selectedDistrict) ? 'not-allowed' : 'pointer' }}
             >
               + เพิ่ม {selectedProvince}
             </button>

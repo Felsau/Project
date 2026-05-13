@@ -76,9 +76,8 @@ def supa_call(builder_fn, retries: int = 1):
     raise last_exc  # type: ignore[misc]
 
 
-def get_population(supabase_unused: Client, province_name: str, year: int):
-    # หมายเหตุ: ตัวแปร supabase_unused เก็บไว้เพื่อ backward compat กับ caller เดิม
-    # การเรียกจริงใช้ supa_call เพื่อให้ได้ retry-on-disconnect
+def get_population(province_name: str, year: int):
+    # ใช้ supa_call เพื่อให้ได้ retry-on-disconnect — ไม่ต้องรับ Client มาเองแล้ว
     result = supa_call(lambda s: s.table("province_population")
                        .select("population,year")
                        .eq("province", province_name)
@@ -95,17 +94,24 @@ def get_population(supabase_unused: Client, province_name: str, year: int):
     return fallback.data[0]["population"] if fallback.data else None
 
 
+def _resolve_geojson_path(env_var: str, fallback_name: str) -> str:
+    """หา path ของ geojson — env var มาก่อน, fallback ไป frontend/public (dev local)"""
+    override = os.getenv(env_var)
+    if override:
+        return override
+    return os.path.join(os.path.dirname(__file__),
+                        '..', 'green-area-frontend', 'public', fallback_name)
+
+
 def _load_province_geometries() -> dict:
-    path = os.path.join(os.path.dirname(__file__),
-                        '..', 'green-area-frontend', 'public', 'thailand.json')
+    path = _resolve_geojson_path('THAILAND_GEOJSON_PATH', 'thailand.json')
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
     return {feat['properties']['name']: feat['geometry'] for feat in data['features']}
 
 
 def _load_district_geometries() -> dict:
-    path = os.path.join(os.path.dirname(__file__),
-                        '..', 'green-area-frontend', 'public', 'thailand_districts.json')
+    path = _resolve_geojson_path('DISTRICTS_GEOJSON_PATH', 'thailand_districts.json')
     if not os.path.exists(path):
         logger.warning("⚠️  thailand_districts.json ไม่พบ — รัน generate_districts.py ก่อน")
         return {}
