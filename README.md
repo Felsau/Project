@@ -33,8 +33,10 @@
 
 ### 1) Supabase setup
 - สร้าง project ใหม่ใน https://supabase.com
-- เปิด SQL Editor รัน `green-area-backend/migrations/000_initial_schema.sql` (สร้างตารางทั้งหมด)
-- รัน `001_add_dense_area_columns.sql` (เพิ่ม column dense forest — ถ้าเคยมี table เก่าอยู่แล้ว)
+- เปิด SQL Editor รัน migration ตามลำดับ:
+  - `green-area-backend/migrations/000_initial_schema.sql` (สร้างตารางทั้งหมด)
+  - `001_add_dense_area_columns.sql` (เพิ่ม column dense forest)
+  - `002_constraints_and_cache_meta.sql` (CHECK constraints + cache_version/expires_at + index)
 - เอา `URL` และ `service_role` key จากหน้า Project Settings → API
 
 ### 2) Backend
@@ -130,5 +132,7 @@ Frontend test suite ตอนนี้คุม smoke render + sidebar empty sta
   - Build: `pip install -r requirements.txt`
   - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 - ตั้ง `ALLOWED_ORIGINS` ให้ตรงกับ frontend URL
-- คั่น `thailand.json` กับ `thailand_districts.json` ระหว่าง 2 service —
-  backend ปัจจุบันอ่านจาก `../green-area-frontend/public/` ถ้า deploy แยกต้อง copy เข้า image
+- คั่น `thailand.json` กับ `thailand_districts.json` ระหว่าง 2 service — backend จะหาตามลำดับ:
+  1. ENV `THAILAND_GEOJSON_PATH` / `DISTRICTS_GEOJSON_PATH` (override)
+  2. `green-area-backend/data/` (production — copy 2 ไฟล์เข้า image)
+  3. `../green-area-frontend/public/` (legacy dev-local แบบ monorepo)

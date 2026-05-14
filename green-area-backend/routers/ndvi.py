@@ -2,9 +2,10 @@ from fastapi import APIRouter, HTTPException
 import logging
 import ee
 
-from dependencies import (get_population, supa_call,
+from dependencies import (get_population, supa_call, internal_error,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
-                          CURRENT_YEAR, WHO_STANDARD_M2, MONTH_NAMES)
+                          CURRENT_YEAR, WHO_STANDARD_M2, MONTH_NAMES,
+                          YearParam, YEAR_MIN, YEAR_MAX, CURRENT_CACHE_VERSION)
 from gee_utils import mask_s2_clouds
 from schemas import NDVIResponse, NDVIMonthlyResponse
 
@@ -15,14 +16,19 @@ logger = logging.getLogger(__name__)
 def _is_stale(row: dict) -> bool:
     """Cache row ที่ควร invalidate และคำนวณใหม่.
 
-    เกณฑ์:
-      - ขาด field สำคัญ (green_area_pct, total_area_km2)
-      - NDVI Min ต่ำกว่า −0.1 = น่าจะคำนวณก่อนยุค water mask (เก่า) → ต้องคำนวณใหม่
+    เกณฑ์ (เรียงตาม priority):
+      1. cache_version < CURRENT_CACHE_VERSION → schema/logic เปลี่ยน, recompute
+      2. ขาด field สำคัญ (green_area_pct, total_area_km2)
+      3. NDVI Min ต่ำกว่า −0.05 = cache ก่อนยุค water mask (legacy heuristic)
+
+    เกณฑ์ #3 ถูกแทนที่ด้วย cache_version ในอนาคต — เก็บไว้ backward-compat
+    กับ row ที่สร้างก่อน migration 002
     """
+    # ใช้ .get default = 1 สำหรับ row จาก legacy schema ที่ยังไม่มี column
+    if row.get("cache_version", 1) < CURRENT_CACHE_VERSION:
+        return True
     if row.get("green_area_pct") is None or row.get("total_area_km2") is None:
         return True
-    # ตรวจสอบ logic version ผ่าน ndvi_min — เริ่ม mask water ที่ >= 0.0 แล้ว
-    # ถ้าเจอ min < -0.05 = cache เก่าก่อนยุค water mask
     nm = row.get("ndvi_min")
     if nm is not None and nm < -0.05:
         return True
@@ -156,7 +162,7 @@ def _compute_ndvi_monthly(geom: ee.Geometry, year: int, scale: int):
 
 # ── District NDVI monthly ────────────────────────────────── (before catch-all)
 @router.get("/ndvi/{province_name}/districts/{district_name}/monthly")
-def get_district_ndvi_monthly(province_name: str, district_name: str, year: int = CURRENT_YEAR):
+def get_district_ndvi_monthly(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
         raise HTTPException(status_code=404,
@@ -182,17 +188,18 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: int 
         supa_call(lambda s: s.table("district_ndvi_monthly").insert({
             "province": province_name, "district": district_name,
             "year": year, "monthly_data": results,
+            "cache_version": CURRENT_CACHE_VERSION,
         }).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
         logger.error("❌ Error district monthly [%s/%s/%d]", province_name, district_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── District NDVI annual ─────────────────────────────────── (before catch-all)
 @router.get("/ndvi/{province_name}/districts/{district_name}")
-def get_district_ndvi(province_name: str, district_name: str, year: int = CURRENT_YEAR):
+def get_district_ndvi(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
         raise HTTPException(status_code=404,
@@ -231,6 +238,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
         supa_call(lambda s: s.table("district_ndvi_annual").insert({
             "province": province_name, "district": district_name, "year": year,
             **result,
+            "cache_version": CURRENT_CACHE_VERSION,
         }).execute())
 
         return {
@@ -241,12 +249,12 @@ def get_district_ndvi(province_name: str, district_name: str, year: int = CURREN
         raise
     except Exception as e:
         logger.error("❌ Error district [%s/%s/%d]", province_name, district_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── Province NDVI monthly ────────────────────────────────────────────────────
 @router.get("/ndvi/{province_name}/monthly", response_model=NDVIMonthlyResponse)
-def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
+def get_ndvi_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
@@ -266,11 +274,12 @@ def get_ndvi_monthly(province_name: str, year: int = CURRENT_YEAR):
         results = _compute_ndvi_monthly(ee.Geometry(raw_geom), year, scale=500)
         supa_call(lambda s: s.table("ndvi_monthly").insert({
             "province": province_name, "year": year, "monthly_data": results,
+            "cache_version": CURRENT_CACHE_VERSION,
         }).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── Province NDVI compare ────────────────────────────────────────────────────
@@ -282,6 +291,10 @@ def get_ndvi_compare(province_name: str,
     year_list = sorted(set(int(y.strip()) for y in years.split(",") if y.strip().isdigit()))
     if not year_list:
         raise HTTPException(status_code=400, detail="years ต้องเป็นตัวเลขคั่นด้วย comma")
+    out_of_range = [y for y in year_list if y < YEAR_MIN or y > YEAR_MAX]
+    if out_of_range:
+        raise HTTPException(status_code=400,
+            detail=f"years ต้องอยู่ใน {YEAR_MIN}–{YEAR_MAX} · นอกช่วง: {out_of_range}")
 
     result = supa_call(lambda s: s.table("ndvi_annual")
                        .select("year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person,who_status")
@@ -300,7 +313,7 @@ def get_ndvi_compare(province_name: str,
 
 # ── Province NDVI annual ─────────────────────────────────────────────────────
 @router.get("/ndvi/{province_name}", response_model=NDVIResponse)
-def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
+def get_ndvi(province_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
@@ -344,6 +357,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
 
         supa_call(lambda s: s.table("ndvi_annual").insert({
             "province": province_name, "year": year, **full,
+            "cache_version": CURRENT_CACHE_VERSION,
         }).execute())
 
         return {"province": province_name, "year": year, **full, "from_cache": False}
@@ -351,4 +365,4 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
         raise
     except Exception as e:
         logger.error("❌ Error [%s/%d]", province_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()

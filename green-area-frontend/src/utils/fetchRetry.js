@@ -10,8 +10,10 @@
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 export async function fetchWithRetry(url, options = {}, { retries = 2, baseDelayMs = 1000 } = {}) {
+  const signal = options.signal;
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     try {
       const res = await fetch(url, options);
       if (res.ok || (res.status >= 400 && res.status < 500)) {
@@ -19,6 +21,8 @@ export async function fetchWithRetry(url, options = {}, { retries = 2, baseDelay
       }
       lastErr = new Error(`HTTP ${res.status}`);
     } catch (err) {
+      // AbortError ห้าม retry — ผู้ใช้ยกเลิกหรือ component unmount แล้ว
+      if (err?.name === 'AbortError') throw err;
       lastErr = err;
     }
     if (attempt < retries) {

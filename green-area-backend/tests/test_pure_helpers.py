@@ -1,11 +1,15 @@
 """Unit tests สำหรับ pure helpers ที่ไม่ต้องพึ่ง GEE/Supabase
 รัน: cd green-area-backend && pytest tests/ -v
 """
+import os
+import tempfile
+
 import pytest
 
 # Import จาก backend modules — conftest.py ตั้ง sys.path ให้แล้ว
 from routers.ndvi import _is_stale, compute_who_status
 from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP
+from dependencies import _validate_geojson_path, CURRENT_CACHE_VERSION
 
 
 # ── _is_stale ────────────────────────────────────────────────────────────────
@@ -34,6 +38,23 @@ class TestIsStale:
 
     def test_ndvi_min_none_handled(self):
         row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": None}
+        assert _is_stale(row) is False
+
+    def test_old_cache_version_is_stale(self):
+        # cache_version < CURRENT_CACHE_VERSION → stale แม้ field อื่นจะครบ
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": 0.05,
+               "cache_version": CURRENT_CACHE_VERSION - 1}
+        assert _is_stale(row) is True
+
+    def test_current_cache_version_not_stale(self):
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": 0.05,
+               "cache_version": CURRENT_CACHE_VERSION}
+        assert _is_stale(row) is False
+
+    def test_missing_cache_version_treated_as_1(self):
+        # row จาก legacy schema (ไม่มี cache_version column) — default = 1
+        # ถ้า CURRENT_CACHE_VERSION = 1 → ไม่ stale
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": 0.05}
         assert _is_stale(row) is False
 
 
@@ -100,3 +121,29 @@ class TestNormalizeWeights:
     def test_negative_total_falls_back_to_default(self):
         n, l, p = _normalize_weights(-0.1, -0.1, -0.1)
         assert (n, l, p) == (W_NDVI, W_LST, W_POP)
+
+
+# ── _validate_geojson_path ────────────────────────────────────────────────────
+class TestValidateGeojsonPath:
+    def test_valid_json_file_passes(self, tmp_path):
+        p = tmp_path / "test.json"
+        p.write_text('{"type":"FeatureCollection","features":[]}', encoding='utf-8')
+        result = _validate_geojson_path(str(p))
+        assert os.path.isfile(result)
+        assert result.lower().endswith('.json')
+
+    def test_nonexistent_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            _validate_geojson_path(str(tmp_path / "missing.json"))
+
+    def test_non_json_extension_raises(self, tmp_path):
+        # ป้องกัน path traversal ที่ชี้ไปไฟล์ผิดประเภท เช่น /etc/passwd
+        p = tmp_path / "passwd"
+        p.write_text("root:x:0:0", encoding='utf-8')
+        with pytest.raises(ValueError, match="\\.json"):
+            _validate_geojson_path(str(p))
+
+    def test_directory_path_raises(self, tmp_path):
+        # ส่ง directory แทนไฟล์ ก็ต้อง reject
+        with pytest.raises(FileNotFoundError):
+            _validate_geojson_path(str(tmp_path))

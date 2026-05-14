@@ -1,0 +1,7 @@
+# วางไฟล์ thailand.json + thailand_districts.json ที่ folder นี้สำหรับ production deploy
+# (deploy backend แยกจาก frontend image)
+#
+# ตอน dev local ที่ตั้ง monorepo ปกติ backend จะ fallback ไปอ่านจาก
+# ../green-area-frontend/public/ ให้อัตโนมัติ
+#
+# Generate thailand_districts.json: cd green-area-backend && python generate_districts.py
