@@ -46,3 +46,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Local utility scripts + generated summaries (ไม่ใช่ส่วนของโปรเจกต์)
+generate_summary_pdf.py
+Chat_Summary_*.pdf
