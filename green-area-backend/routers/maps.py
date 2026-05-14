@@ -6,13 +6,14 @@
 from fastapi import APIRouter, HTTPException, Response
 import httpx
 import io
-import json
 import logging
 import os
 import ee
 
-from dependencies import (get_supabase, supa_call, PROVINCE_GEOMETRIES,
-                          DISTRICT_GEOMETRIES, CURRENT_YEAR, WHO_STANDARD_M2)
+from dependencies import (get_supabase, supa_call, internal_error,
+                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          CURRENT_YEAR, WHO_STANDARD_M2, CURRENT_CACHE_VERSION,
+                          YearParam, load_thailand_geojson_raw)
 from gee_utils import mask_s2_clouds, get_lst_col
 
 # ESA WorldCover v200 class code (Built-up = สิ่งปลูกสร้าง/พื้นที่ urban)
@@ -231,7 +232,7 @@ def _bbox_dims(geom_dict, max_dim=512):
 
 
 @router.get("/maps/{province_name}/ndvi-thumb")
-def ndvi_thumb(province_name: str, year: int = CURRENT_YEAR,
+def ndvi_thumb(province_name: str, year: YearParam = CURRENT_YEAR,
                district_name: str | None = None):
     """NDVI raster thumbnail พร้อม colorbar + north arrow + scale bar"""
     if district_name:
@@ -279,7 +280,7 @@ def ndvi_thumb(province_name: str, year: int = CURRENT_YEAR,
 
 
 @router.get("/maps/{province_name}/lst-thumb")
-def lst_thumb(province_name: str, year: int = CURRENT_YEAR,
+def lst_thumb(province_name: str, year: YearParam = CURRENT_YEAR,
               district_name: str | None = None):
     """LST raster thumbnail พร้อม colorbar + north arrow + scale bar"""
     if district_name:
@@ -326,17 +327,10 @@ _THAILAND_GEOJSON = None
 
 
 def _load_thailand_geojson():
+    """Cache GeoJSON ใน memory — ใช้ helper จาก dependencies.py (path validated)"""
     global _THAILAND_GEOJSON
-    if _THAILAND_GEOJSON is not None:
-        return _THAILAND_GEOJSON
-    # ใช้ env var ถ้าตั้ง — fallback ไป frontend/public (dev local แบบ monorepo)
-    path = os.getenv('THAILAND_GEOJSON_PATH') or os.path.join(
-        os.path.dirname(__file__),
-        '..', '..', 'green-area-frontend', 'public', 'thailand.json')
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding='utf-8') as f:
-        _THAILAND_GEOJSON = json.load(f)
+    if _THAILAND_GEOJSON is None:
+        _THAILAND_GEOJSON = load_thailand_geojson_raw()
     return _THAILAND_GEOJSON
 
 
@@ -413,7 +407,7 @@ def thailand_thumb(province: str | None = None):
 
 # ── District summary (Phase B-1: per-district breakdown) ─────────────────────
 @router.get("/analysis/districts/{province_name}")
-def get_district_summary(province_name: str, year: int = CURRENT_YEAR):
+def get_district_summary(province_name: str, year: YearParam = CURRENT_YEAR):
     """รวบรวมข้อมูลรายอำเภอ (NDVI + LST) จาก cache สำหรับใส่ในรายงานระดับจังหวัด.
 
     คืนเฉพาะอำเภอที่มี cached ปีนั้น — ไม่ trigger compute ใหม่เพื่อกันเวลา response.
@@ -481,7 +475,7 @@ def get_district_summary(province_name: str, year: int = CURRENT_YEAR):
 #   );
 # ถ้าไม่สร้าง endpoint ยังทำงานได้ปกติ — แค่คำนวณใหม่ทุกครั้ง (ใช้เวลา 30-60s ต่อครั้ง)
 @router.get("/analysis/urban-subset/{province_name}")
-def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
+def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
                      district_name: str | None = None):
     """NDVI + green area + ประชากร เฉพาะภายในเขต Built-up (ESA WorldCover v200, ปี 2021).
 
@@ -600,7 +594,8 @@ def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
 
         # Cache (best-effort — แค่ insert ถ้า table มีอยู่)
         try:
-            supa_call(lambda s: s.table("urban_ndvi_annual").insert(result).execute())
+            supa_call(lambda s: s.table("urban_ndvi_annual").insert(
+                {**result, "cache_version": CURRENT_CACHE_VERSION}).execute())
         except Exception as e:
             logger.warning("⚠️ Urban cache insert failed (non-fatal — table อาจยังไม่ถูกสร้าง): %s", e)
 
@@ -610,14 +605,14 @@ def get_urban_subset(province_name: str, year: int = CURRENT_YEAR,
         raise
     except Exception as e:
         logger.error("❌ Urban subset error [%s/%d]", scope, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── Time-series (Phase B-2: multi-year trend) ────────────────────────────────
 @router.get("/analysis/timeseries/{province_name}")
 def get_timeseries(province_name: str,
-                   start_year: int = CURRENT_YEAR - 4,
-                   end_year: int = CURRENT_YEAR,
+                   start_year: YearParam = CURRENT_YEAR - 4,
+                   end_year: YearParam = CURRENT_YEAR,
                    district_name: str | None = None):
     """ดึง NDVI + LST รายปี (annual) ย้อนหลังจาก cache เพื่อแสดงแนวโน้ม.
 
@@ -704,7 +699,7 @@ def get_timeseries(province_name: str,
 
 # ── National & regional context ──────────────────────────────────────────────
 @router.get("/analysis/context/{province_name}")
-def get_context(province_name: str, year: int = CURRENT_YEAR):
+def get_context(province_name: str, year: YearParam = CURRENT_YEAR):
     """คืนค่าเฉลี่ยระดับประเทศ + จังหวัดข้างเคียงสำหรับเทียบกับจังหวัดที่เลือก"""
     from dependencies import supa_call
 

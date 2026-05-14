@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException
 import logging
 import ee
 
-from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
-                          CURRENT_YEAR, MONTH_NAMES)
+from dependencies import (supa_call, internal_error,
+                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          CURRENT_YEAR, MONTH_NAMES, YearParam,
+                          CURRENT_CACHE_VERSION)
 from gee_utils import get_lst_col, reduce_lst, scale_lst
 from schemas import LSTResponse, LSTMonthlyResponse
 
@@ -60,7 +62,7 @@ def _compute_lst_monthly(geom: ee.Geometry, year: int, scale: int):
 
 # ── District LST monthly ─────────────────────────────────── (before catch-all)
 @router.get("/lst/{province_name}/districts/{district_name}/monthly")
-def get_district_lst_monthly(province_name: str, district_name: str, year: int = CURRENT_YEAR):
+def get_district_lst_monthly(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
         raise HTTPException(status_code=404,
@@ -78,17 +80,18 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: int =
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=100)
         supa_call(lambda s: s.table("district_lst_monthly").insert({
             "province": province_name, "district": district_name,
-            "year": year, "monthly_data": results}).execute())
+            "year": year, "monthly_data": results,
+            "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
     except Exception as e:
         logger.error("❌ District LST monthly error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── District LST annual ──────────────────────────────────── (before catch-all)
 @router.get("/lst/{province_name}/districts/{district_name}")
-def get_district_lst(province_name: str, district_name: str, year: int = CURRENT_YEAR):
+def get_district_lst(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
         raise HTTPException(status_code=404,
@@ -114,7 +117,8 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
 
         supa_call(lambda s: s.table("district_lst_annual").insert({
             "province": province_name, "district": district_name, "year": year,
-            "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute())
+            "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
+            "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "district": district_name, "year": year,
                 "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
                 "from_cache": False}
@@ -122,12 +126,12 @@ def get_district_lst(province_name: str, district_name: str, year: int = CURRENT
         raise
     except Exception as e:
         logger.error("❌ District LST error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── Province LST monthly ─────────────────────────────────────────────────────
 @router.get("/lst/{province_name}/monthly", response_model=LSTMonthlyResponse)
-def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
+def get_lst_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
@@ -143,17 +147,18 @@ def get_lst_monthly(province_name: str, year: int = CURRENT_YEAR):
     try:
         results = _compute_lst_monthly(ee.Geometry(raw_geom), year, scale=500)
         supa_call(lambda s: s.table("province_lst_monthly").insert(
-            {"province": province_name, "year": year, "monthly_data": results}).execute())
+            {"province": province_name, "year": year, "monthly_data": results,
+             "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
     except Exception as e:
         logger.error("❌ LST monthly error", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── Province LST annual ──────────────────────────────────────────────────────
 @router.get("/lst/{province_name}", response_model=LSTResponse)
-def get_lst(province_name: str, year: int = CURRENT_YEAR):
+def get_lst(province_name: str, year: YearParam = CURRENT_YEAR):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
@@ -178,7 +183,8 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
 
         supa_call(lambda s: s.table("province_lst_annual").insert(
             {"province": province_name, "year": year,
-             "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max}).execute())
+             "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
+             "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "year": year,
                 "lst_mean": lst_mean, "lst_min": lst_min, "lst_max": lst_max,
                 "from_cache": False}
@@ -186,4 +192,4 @@ def get_lst(province_name: str, year: int = CURRENT_YEAR):
         raise
     except Exception as e:
         logger.error("❌ LST error [%s/%d]", province_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()

@@ -1,5 +1,6 @@
 from functools import lru_cache
-from fastapi import Header, HTTPException
+from typing import Annotated
+from fastapi import Header, HTTPException, Query
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import datetime
@@ -7,6 +8,7 @@ import httpx
 import json
 import logging
 import os
+import secrets
 import time
 
 load_dotenv()
@@ -17,15 +19,30 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 WHO_STANDARD_M2 = 9
+
+# Cache schema version — bump เมื่อเปลี่ยน compute logic ที่ทำให้ค่าเก่าไม่ valid
+# (เช่น เพิ่ม water mask, เปลี่ยน NDVI threshold)
+# _is_stale() จะถือว่า row ที่ cache_version < CURRENT_CACHE_VERSION = stale
+CURRENT_CACHE_VERSION = 1
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
+
+# ขอบเขตปีที่ยอมรับได้ — Sentinel-2 เริ่ม 2015, Landsat 8 เริ่ม 2013
+# เลือก 1980 เป็น lower bound เผื่อ dataset อื่นในอนาคต, +1 เผื่อปีหน้าตอน rollover
+YEAR_MIN = 1980
+YEAR_MAX = CURRENT_YEAR + 1
+YearParam = Annotated[int, Query(
+    ge=YEAR_MIN, le=YEAR_MAX,
+    description=f"ปี ค.ศ. ระหว่าง {YEAR_MIN}–{YEAR_MAX}",
+)]
 
 
 def require_admin(x_admin_token: str | None = Header(default=None)):
     if not ADMIN_TOKEN:
         raise HTTPException(status_code=503,
                             detail="ADMIN_TOKEN ยังไม่ตั้งค่าใน .env — endpoint นี้ปิดใช้งาน")
-    if x_admin_token != ADMIN_TOKEN:
+    # ใช้ compare_digest กัน timing attack ที่เทียบ string ทีละ byte
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, ADMIN_TOKEN):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -47,6 +64,12 @@ _TRANSIENT_ERRORS = (
     httpx.WriteTimeout,
     httpx.PoolTimeout,
 )
+
+
+def internal_error(message: str = "เกิดข้อผิดพลาดภายในระบบ — ดู logs สำหรับรายละเอียด"):
+    """สร้าง HTTPException 500 ที่ไม่ leak stack trace/secrets ไป client
+    เรียก helper นี้แทน `HTTPException(500, detail=str(e))` ทุกที่"""
+    return HTTPException(status_code=500, detail=message)
 
 
 def supa_call(builder_fn, retries: int = 1):
@@ -94,17 +117,52 @@ def get_population(province_name: str, year: int):
     return fallback.data[0]["population"] if fallback.data else None
 
 
-def _resolve_geojson_path(env_var: str, fallback_name: str) -> str:
-    """หา path ของ geojson — env var มาก่อน, fallback ไป frontend/public (dev local)"""
+BACKEND_ROOT = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DATA_DIR = os.path.join(BACKEND_ROOT, 'data')
+# legacy dev-local path — รองรับ monorepo workflow ที่ frontend/backend อยู่คู่กัน
+LEGACY_FRONTEND_PUBLIC = os.path.join(BACKEND_ROOT, '..',
+                                      'green-area-frontend', 'public')
+
+
+def _validate_geojson_path(path: str) -> str:
+    """Resolve + validate ว่าเป็นไฟล์ .json ที่อ่านได้ (ป้องกัน path traversal)"""
+    resolved = os.path.realpath(path)
+    if not os.path.isfile(resolved):
+        raise FileNotFoundError(f"ไม่พบไฟล์: {path} (resolved: {resolved})")
+    if not resolved.lower().endswith('.json'):
+        raise ValueError(f"GeoJSON path ต้องลงท้ายด้วย .json: {resolved}")
+    return resolved
+
+
+def _resolve_geojson_path(env_var: str, fallback_name: str) -> str | None:
+    """หา path ของ geojson ตามลำดับ:
+       1) env var override → 2) backend/data/ → 3) ../green-area-frontend/public/ (legacy)
+
+    ทุก path ผ่าน _validate_geojson_path กัน path traversal/symlink + ไฟล์ไม่ใช่ .json
+    Return None ถ้าหาไม่เจอเลย (caller ตัดสินใจว่าจะ warn หรือ raise)
+    """
+    candidates = []
     override = os.getenv(env_var)
     if override:
-        return override
-    return os.path.join(os.path.dirname(__file__),
-                        '..', 'green-area-frontend', 'public', fallback_name)
+        candidates.append(override)
+    candidates.append(os.path.join(BACKEND_DATA_DIR, fallback_name))
+    candidates.append(os.path.join(LEGACY_FRONTEND_PUBLIC, fallback_name))
+
+    for cand in candidates:
+        try:
+            return _validate_geojson_path(cand)
+        except (FileNotFoundError, ValueError):
+            continue
+    return None
 
 
 def _load_province_geometries() -> dict:
     path = _resolve_geojson_path('THAILAND_GEOJSON_PATH', 'thailand.json')
+    if not path:
+        raise RuntimeError(
+            "ไม่พบ thailand.json — วางที่ green-area-backend/data/thailand.json "
+            "หรือตั้ง env THAILAND_GEOJSON_PATH"
+        )
     with open(path, encoding='utf-8') as f:
         data = json.load(f)
     return {feat['properties']['name']: feat['geometry'] for feat in data['features']}
@@ -112,7 +170,7 @@ def _load_province_geometries() -> dict:
 
 def _load_district_geometries() -> dict:
     path = _resolve_geojson_path('DISTRICTS_GEOJSON_PATH', 'thailand_districts.json')
-    if not os.path.exists(path):
+    if not path:
         logger.warning("⚠️  thailand_districts.json ไม่พบ — รัน generate_districts.py ก่อน")
         return {}
     with open(path, encoding='utf-8') as f:
@@ -124,6 +182,16 @@ def _load_district_geometries() -> dict:
         if p and d:
             result[(p, d)] = feat['geometry']
     return result
+
+
+def load_thailand_geojson_raw() -> dict | None:
+    """โหลด thailand.json ดิบ (ทั้ง FeatureCollection) — ใช้ใน maps.py สำหรับ render
+    mini-map. กลับ None ถ้าไม่เจอไฟล์"""
+    path = _resolve_geojson_path('THAILAND_GEOJSON_PATH', 'thailand.json')
+    if not path:
+        return None
+    with open(path, encoding='utf-8') as f:
+        return json.load(f)
 
 
 PROVINCE_GEOMETRIES = _load_province_geometries()

@@ -12,8 +12,9 @@ import logging
 import time
 import ee
 
-from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
-                          CURRENT_YEAR)
+from dependencies import (supa_call, internal_error,
+                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          CURRENT_YEAR, YearParam)
 from gee_utils import mask_s2_clouds, get_lst_col
 
 router = APIRouter()
@@ -323,7 +324,7 @@ def _get_heatmap_url(priority: ee.Image) -> str:
 
 # ── Province-level recommendation ────────────────────────────────────────────
 @router.get("/recommend/{province_name}")
-def recommend_province(province_name: str, year: int = CURRENT_YEAR,
+def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
                        w_ndvi: float = W_NDVI, w_lst: float = W_LST, w_pop: float = W_POP):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
@@ -348,7 +349,7 @@ def recommend_province(province_name: str, year: int = CURRENT_YEAR,
                     _store_tile_url(province_name, None, year, tile_url)
                 except Exception as e:
                     logger.error("❌ Recommend tile refresh error [%s/%d]", province_name, year, exc_info=True)
-                    raise HTTPException(status_code=500, detail=str(e))
+                    raise internal_error()
             return {
                 "province": province_name, "year": year,
                 "tile_url": tile_url, "top_locations": row["top_locations"],
@@ -388,13 +389,13 @@ def recommend_province(province_name: str, year: int = CURRENT_YEAR,
         raise
     except Exception as e:
         logger.error("❌ Recommend error [%s/%d]", province_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()
 
 
 # ── District-level recommendation ────────────────────────────────────────────
 @router.get("/recommend/{province_name}/districts/{district_name}")
 def recommend_district(province_name: str, district_name: str,
-                       year: int = CURRENT_YEAR,
+                       year: YearParam = CURRENT_YEAR,
                        w_ndvi: float = W_NDVI, w_lst: float = W_LST, w_pop: float = W_POP):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
@@ -419,7 +420,7 @@ def recommend_district(province_name: str, district_name: str,
                     _store_tile_url(province_name, district_name, year, tile_url)
                 except Exception as e:
                     logger.error("❌ Recommend tile refresh error [%s/%s/%d]", province_name, district_name, year, exc_info=True)
-                    raise HTTPException(status_code=500, detail=str(e))
+                    raise internal_error()
             return {
                 "province": province_name, "district": district_name, "year": year,
                 "tile_url": tile_url, "top_locations": row["top_locations"],
@@ -458,4 +459,4 @@ def recommend_district(province_name: str, district_name: str,
         raise
     except Exception as e:
         logger.error("❌ Recommend error [%s/%s/%d]", province_name, district_name, year, exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise internal_error()

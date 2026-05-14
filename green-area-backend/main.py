@@ -24,7 +24,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 from dependencies import (supa_call, require_admin,
-                          PROVINCE_GEOMETRIES, CURRENT_YEAR)
+                          PROVINCE_GEOMETRIES, CURRENT_YEAR,
+                          YearParam, YEAR_MIN, YEAR_MAX)
 from routers import ndvi, lst, recommend, maps
 from schemas import RankingResponse
 
@@ -82,7 +83,7 @@ def read_root():
 
 
 @app.get("/compare")
-def compare_provinces(provinces: str, year: int = CURRENT_YEAR):
+def compare_provinces(provinces: str, year: YearParam = CURRENT_YEAR):
     province_list = [p.strip() for p in provinces.split(",") if p.strip()]
     if not province_list:
         raise HTTPException(status_code=400, detail="ต้องระบุจังหวัดอย่างน้อย 1 จังหวัด")
@@ -147,7 +148,7 @@ def clear_province_cache(province_name: str):
 
 
 @app.get("/analysis/ranking", response_model=RankingResponse)
-def get_ranking(year: int = CURRENT_YEAR):
+def get_ranking(year: YearParam = CURRENT_YEAR):
     result = supa_call(lambda s: s.table("ndvi_annual")
                        .select("province,ndvi_mean,green_area_pct,green_area_km2,green_area_m2_per_person,who_status,population,total_area_km2")
                        .eq("year", year)

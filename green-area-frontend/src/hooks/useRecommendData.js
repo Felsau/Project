@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { API_BASE, CURRENT_YEAR } from '../constants';
 import { pushError } from '../utils/toast';
 import { fetchWithRetry } from '../utils/fetchRetry';
@@ -14,7 +14,16 @@ export function useRecommendData() {
   const [recommendYear, setRecommendYear]       = useState(CURRENT_YEAR);
   const [recommendWeights, setRecommendWeights] = useState(DEFAULT_WEIGHTS);
 
+  // เก็บ AbortController ของ request ล่าสุด — ยิงใหม่ = ยกเลิกตัวเก่า
+  // กัน race condition: ถ้า user คลิกถี่ๆ จะไม่เกิด response มาถึงคนละลำดับ
+  const inflightRef = useRef(null);
+
   const fetchRecommendation = useCallback(async (provinceEN, districtEN = null, year, weights) => {
+    // ยกเลิก request ก่อนหน้า (ถ้ายังค้าง) แล้วสร้างตัวใหม่
+    inflightRef.current?.abort();
+    const controller = new AbortController();
+    inflightRef.current = controller;
+
     setRecommendLoading(true);
     setRecommendData(null);
     try {
@@ -31,22 +40,33 @@ export function useRecommendData() {
       }
       const qs  = params.toString();
       const url = `${API_BASE}${path}${qs ? `?${qs}` : ''}`;
-      const res  = await fetchWithRetry(url);
+      const res  = await fetchWithRetry(url, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
+      // กัน race ซ้อน: เช็คอีกครั้งหลัง await ว่ายังเป็น request ปัจจุบันอยู่หรือไม่
+      if (controller.signal.aborted) return;
       setRecommendData(json);
       setRecommendScope({ province: provinceEN, district: districtEN, year: year || CURRENT_YEAR });
       setRecommendVisible(true);
     } catch (err) {
+      if (err?.name === 'AbortError') return;  // ถูก cancel ไม่ต้อง toast
       console.error('fetchRecommendation error:', err);
       setRecommendData(null);
       pushError('วิเคราะห์ AI Recommend ไม่สำเร็จ — ลองอีกครั้ง');
     } finally {
-      setRecommendLoading(false);
+      // เคลียร์ ref เฉพาะถ้า controller ตัวนี้ยังเป็นตัวล่าสุด
+      if (inflightRef.current === controller) {
+        inflightRef.current = null;
+        setRecommendLoading(false);
+      }
     }
   }, []);
 
+  // unmount → cancel pending request กัน state update บน component ที่หายไป
+  useEffect(() => () => inflightRef.current?.abort(), []);
+
   const resetRecommend = useCallback(() => {
+    inflightRef.current?.abort();
     setRecommendData(null);
     setRecommendScope(null);
   }, []);
