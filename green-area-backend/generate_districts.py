@@ -42,6 +42,9 @@ import os
 
 import requests
 import ee
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Load GADM province names from existing thailand.json for name matching
@@ -132,8 +135,12 @@ def try_gadm_direct() -> bool:
 def try_gee_gaul() -> bool:
     """Fetch from GEE GAUL 2015 using batched getInfo() — fast & reliable."""
     print("⏳ Fetching from GEE GAUL 2015 (batch mode)...")
+    gee_project = os.getenv('GEE_PROJECT')
+    if not gee_project:
+        print("  ✗ GEE_PROJECT ไม่ถูกตั้งใน .env — strategy นี้ใช้งานไม่ได้")
+        return False
     try:
-        ee.Initialize(project='innate-beacon-483307-v1')
+        ee.Initialize(project=gee_project)
         districts_fc = (
             ee.FeatureCollection("FAO/GAUL/2015/level2")
             .filter(ee.Filter.eq('ADM0_NAME', 'Thailand'))
