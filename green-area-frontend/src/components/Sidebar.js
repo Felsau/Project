@@ -88,6 +88,7 @@ export default function Sidebar({ data, handlers }) {
     ndviCache,
     rankingData = [], rankingStats = null, rankingLoading = false, rankingYear,
     recommendData, recommendLoading, recommendVisible, recommendScope, recommendYear,
+    recommendWeights,
   } = data;
 
   const {
@@ -96,6 +97,7 @@ export default function Sidebar({ data, handlers }) {
     onAddToCompare, onRemoveFromCompare, setCompareMetric, setCompareYear, onFetchCompare,
     onFetchRanking, setRankingYear,
     onFetchRecommend, onToggleRecommend, onClearRecommend, setRecommendYear,
+    setRecommendWeights,
   } = handlers;
 
   const tabStyle = (id) => ({
@@ -266,7 +268,7 @@ export default function Sidebar({ data, handlers }) {
       <div style={{ display: 'flex', borderBottom: '1px solid #dadce0', marginBottom: '16px' }}>
         <button style={tabStyle('stats')}     onClick={() => setSidebarTab('stats')}>ข้อมูล</button>
         <button style={tabStyle('trend')}     onClick={() => setSidebarTab('trend')}>แนวโน้ม</button>
-        <button style={tabStyle('compare')}   onClick={() => setSidebarTab('compare')}>เทียบ</button>
+        <button style={tabStyle('compare')}   onClick={() => setSidebarTab('compare')}>เปรียบเทียบ</button>
         <button style={tabStyle('recommend')} onClick={() => setSidebarTab('recommend')}>🤖 AI</button>
       </div>
 
@@ -819,6 +821,38 @@ export default function Sidebar({ data, handlers }) {
             </div>
           </div>
 
+          {/* Tunable weight sliders — ปรับน้ำหนักก่อนวิเคราะห์ */}
+          <div style={{ background: '#f8f9fa', borderRadius: '6px', padding: '10px 12px' }}>
+            <div style={{ fontSize: '0.72rem', color: '#5f6368', fontWeight: '600', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>ปรับน้ำหนัก (รวมจะถูก normalize อัตโนมัติ)</span>
+              <button
+                onClick={() => setRecommendWeights({ ndvi: 0.40, lst: 0.30, pop: 0.30 })}
+                style={{ background: 'none', border: 'none', color: '#1a73e8', fontSize: '0.7rem', cursor: 'pointer', padding: 0 }}
+              >
+                ↺ reset
+              </button>
+            </div>
+            {[
+              { key: 'ndvi', label: 'NDVI ต่ำ', color: '#22c55e' },
+              { key: 'lst',  label: 'LST สูง',  color: '#ef4444' },
+              { key: 'pop',  label: 'ประชากร',  color: '#1a73e8' },
+            ].map(({ key, label, color }) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.72rem', color: '#202124', width: '60px' }}>{label}</span>
+                <input
+                  type="range" min="0" max="1" step="0.05"
+                  value={recommendWeights[key]}
+                  onChange={e => setRecommendWeights({ ...recommendWeights, [key]: Number(e.target.value) })}
+                  disabled={recommendLoading}
+                  style={{ flex: 1, accentColor: color }}
+                />
+                <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#5f6368', width: '32px', textAlign: 'right' }}>
+                  {recommendWeights[key].toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <select
               value={recommendYear}
@@ -829,7 +863,7 @@ export default function Sidebar({ data, handlers }) {
               {AVAILABLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             <button
-              onClick={() => onFetchRecommend(selectedProvinceEN, selectedDistrict ? selectedDistrict : null, recommendYear)}
+              onClick={() => onFetchRecommend(selectedProvinceEN, selectedDistrict ? selectedDistrict : null, recommendYear, recommendWeights)}
               disabled={recommendLoading}
               style={{ flex: 1, padding: '8px', border: 'none', borderRadius: '4px', background: recommendLoading ? '#dadce0' : '#1a73e8', color: 'white', fontSize: '0.8rem', cursor: recommendLoading ? 'default' : 'pointer', fontWeight: '500' }}
             >

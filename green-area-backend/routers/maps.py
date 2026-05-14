@@ -17,7 +17,9 @@ from gee_utils import mask_s2_clouds, get_lst_col
 
 # ESA WorldCover v200 class code (Built-up = สิ่งปลูกสร้าง/พื้นที่ urban)
 ESA_BUILTUP_CLASS = 50
-WORLDPOP_YEAR = 2020  # ปีล่าสุดที่ WorldPop global มีข้อมูล
+# WorldPop GP/100m/pop — global มีถึงปี 2021 (THA confirmed) — ตั้ง env override ได้
+# ปรับขึ้นเมื่อ WorldPop ออกปีใหม่ → m²/person แม่นยำขึ้น (ลด gap จาก NDVI ปีปัจจุบัน)
+WORLDPOP_YEAR = int(os.getenv("WORLDPOP_YEAR", "2021"))
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

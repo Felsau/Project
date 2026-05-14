@@ -4,6 +4,10 @@ import sys
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 import ee
 
 # Logging — UTF-8 handler (รองรับ emoji + ไทย บน Windows console)
@@ -29,6 +33,12 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
     "ALLOWED_ORIGINS", "http://localhost:3000"
 ).split(",") if o.strip()]
 
+# Startup warnings — เตือนตอน boot ถ้า config ไม่ครบ ก่อนเจอปัญหา runtime
+if not os.getenv("ADMIN_TOKEN"):
+    logger.warning("⚠️  ADMIN_TOKEN ไม่ได้ตั้งใน .env — DELETE /cache จะถูก reject ทุก request")
+if ALLOWED_ORIGINS == ["http://localhost:3000"]:
+    logger.warning("⚠️  ALLOWED_ORIGINS = localhost · production ต้องเปลี่ยนเป็น URL ของ frontend")
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -36,6 +46,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limit แบบ global ต่อ IP — กันใช้ผิดประเภท + GEE quota หมด
+# default 60 req/min ครอบคลุมทุก endpoint · override ผ่าน env RATE_LIMIT
+_rate_limit = os.getenv("RATE_LIMIT", "60/minute")
+limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 if not GEE_PROJECT:
     logger.warning("⚠️  ไม่พบ GEE_PROJECT ใน .env — endpoint ที่ต้องใช้ GEE จะใช้งานไม่ได้")

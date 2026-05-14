@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { API_BASE } from '../constants';
 import { pushError } from '../utils/toast';
+import { fetchWithRetry } from '../utils/fetchRetry';
 
 export function useProvinceData({ setNdviCache }) {
   const [selectedProvince, setSelectedProvince]     = useState(null);
@@ -23,10 +24,10 @@ export function useProvinceData({ setNdviCache }) {
     try {
       const enc = encodeURIComponent;
       const [statsRes, monthlyRes, lstRes, lstMonthlyRes] = await Promise.all([
-        fetch(`${API_BASE}/ndvi/${enc(provinceName)}`),
-        fetch(`${API_BASE}/ndvi/${enc(provinceName)}/monthly`),
-        fetch(`${API_BASE}/lst/${enc(provinceName)}`),
-        fetch(`${API_BASE}/lst/${enc(provinceName)}/monthly`),
+        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}`),
+        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}/monthly`),
+        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}`),
+        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}/monthly`),
       ]);
       const [stats, monthly, lst, lstMonthlyJson] = await Promise.all([
         statsRes.json(), monthlyRes.json(), lstRes.json(), lstMonthlyRes.json(),

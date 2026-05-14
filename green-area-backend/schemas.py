@@ -6,8 +6,10 @@ from pydantic import BaseModel, Field
 
 # ── NDVI ─────────────────────────────────────────────────────────────────────
 class MonthlyNDVIPoint(BaseModel):
-    month: int = Field(ge=1, le=12)
+    month: str
+    month_num: int = Field(ge=1, le=12)
     ndvi: Optional[float] = None
+    image_count: Optional[int] = 0
 
 
 class NDVIResponse(BaseModel):
@@ -36,8 +38,10 @@ class NDVIMonthlyResponse(BaseModel):
 
 # ── LST ──────────────────────────────────────────────────────────────────────
 class MonthlyLSTPoint(BaseModel):
-    month: int = Field(ge=1, le=12)
+    month: str
+    month_num: int = Field(ge=1, le=12)
     lst: Optional[float] = None
+    image_count: Optional[int] = 0
 
 
 class LSTResponse(BaseModel):
