@@ -29,6 +29,21 @@ def _is_stale(row: dict) -> bool:
     return False
 
 
+def compute_who_status(green_area_m2, population):
+    """คำนวณ m²/คน + ข้อความ WHO เทียบมาตรฐาน 9 m²/คน
+
+    Return tuple (m2_per_person, status_text) — ทั้งสองเป็น None ถ้าข้อมูลไม่พอ
+    """
+    if not population or not green_area_m2:
+        return None, None
+    m2_per_person = round(green_area_m2 / population, 2)
+    if m2_per_person >= WHO_STANDARD_M2:
+        status = f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"
+    else:
+        status = f"ต่ำกว่ามาตรฐาน WHO ⚠️ ({m2_per_person:.1f} m²/คน)"
+    return m2_per_person, status
+
+
 # ── Shared compute helpers ───────────────────────────────────────────────────
 def _compute_ndvi_annual(geom: ee.Geometry, year: int, scale: int):
     """คำนวณ NDVI + พื้นที่สีเขียว ประจำปี — คืน None ถ้าไม่มีภาพ.
@@ -321,13 +336,7 @@ def get_ndvi(province_name: str, year: int = CURRENT_YEAR):
 
         green_area_m2 = result.pop('green_area_m2_raw', None)
         population = get_population(province_name, year)
-        if population and green_area_m2:
-            m2_per_person = round(green_area_m2 / population, 2)
-            who_status = (f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"
-                          if m2_per_person >= WHO_STANDARD_M2
-                          else f"ต่ำกว่ามาตรฐาน WHO ⚠️ ({m2_per_person:.1f} m²/คน)")
-        else:
-            m2_per_person = who_status = None
+        m2_per_person, who_status = compute_who_status(green_area_m2, population)
 
         full = {**result,
                 "green_area_m2_per_person": m2_per_person,

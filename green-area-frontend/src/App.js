@@ -137,6 +137,7 @@ function App() {
     recommendVisible: recommend.recommendVisible,
     recommendScope:   recommend.recommendScope,
     recommendYear:    recommend.recommendYear,
+    recommendWeights: recommend.recommendWeights,
   };
 
   const sidebarHandlers = {
@@ -157,6 +158,7 @@ function App() {
     onToggleRecommend:   () => recommend.setRecommendVisible(v => !v),
     onClearRecommend:    recommend.resetRecommend,
     setRecommendYear:    recommend.setRecommendYear,
+    setRecommendWeights: recommend.setRecommendWeights,
   };
 
   return (
