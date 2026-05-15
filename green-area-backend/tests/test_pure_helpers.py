@@ -10,6 +10,7 @@ import pytest
 from routers.ndvi import _is_stale, compute_who_status
 from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP
 from dependencies import _validate_geojson_path, CURRENT_CACHE_VERSION
+from impact import estimate_impact, IMPACT_DEFAULTS, TREE_CO2_PER_YEAR
 
 
 # ── _is_stale ────────────────────────────────────────────────────────────────
@@ -147,3 +148,72 @@ class TestValidateGeojsonPath:
         # ส่ง directory แทนไฟล์ ก็ต้อง reject
         with pytest.raises(FileNotFoundError):
             _validate_geojson_path(str(tmp_path))
+
+
+# ── estimate_impact ───────────────────────────────────────────────────────────
+class TestEstimateImpact:
+    def test_zero_area_returns_zero_trees(self):
+        out = estimate_impact(0, [{"scientific": "Samanea saman", "name_th": "จามจุรี"}])
+        assert out["trees_total"] == 0
+        assert out["annual_co2_tonnes"] == 0
+        assert out["species_breakdown"] == []
+
+    def test_known_species_uses_specific_coefficient(self):
+        # 1 ha = 10,000 m² × 400 trees/ha = 4,000 ต้น
+        # ทั้งหมดเป็น Samanea saman (28 kg CO₂/ต้น/ปี) → 112,000 kg = 112 ตัน
+        out = estimate_impact(100_000, [{"scientific": "Samanea saman", "name_th": "จามจุรี"}])
+        assert out["trees_total"] == 4000
+        assert out["annual_co2_kg"] == 112_000
+        assert out["annual_co2_tonnes"] == 112.0
+        assert len(out["species_breakdown"]) == 1
+        assert out["species_breakdown"][0]["trees"] == 4000
+        assert out["species_breakdown"][0]["kg_co2_per_tree"] == 28.0
+
+    def test_unknown_species_falls_back_to_default(self):
+        out = estimate_impact(100_000, [{"scientific": "Unknown spp.", "name_th": "ไม่รู้จัก"}])
+        # 4000 ต้น × 22 kg (IPCC default) = 88,000 kg
+        assert out["annual_co2_kg"] == 88_000
+
+    def test_multiple_species_split_evenly_with_remainder(self):
+        # 4000 ต้น / 3 species = 1333, 1333, 1334 (remainder ไป species แรก)
+        out = estimate_impact(100_000, [
+            {"scientific": "Samanea saman", "name_th": "จามจุรี"},        # 28
+            {"scientific": "Pterocarpus indicus", "name_th": "ประดู่บ้าน"},  # 22
+            {"scientific": "Tectona grandis", "name_th": "สัก"},          # 24
+        ])
+        counts = [b["trees"] for b in out["species_breakdown"]]
+        assert sum(counts) == 4000
+        # species แรกได้ remainder
+        assert counts[0] >= counts[1]
+
+    def test_empty_species_list_uses_default_coefficient(self):
+        out = estimate_impact(100_000, [])
+        # 4000 ต้น × 22 (default) → 88 ตัน
+        assert out["annual_co2_tonnes"] == 88.0
+        assert out["species_breakdown"] == []
+
+    def test_cooling_constant_returned(self):
+        out = estimate_impact(100_000, [])
+        assert out["expected_delta_lst_c"] == IMPACT_DEFAULTS["delta_lst_c"]
+        assert out["maturity_years"] == IMPACT_DEFAULTS["maturity_years"]
+
+    def test_cars_equivalent_uses_epa_factor(self):
+        # 4.6 ตัน CO₂/ปี/รถ → 100 ตัน = 21.7 รถ
+        out = estimate_impact(100_000, [{"scientific": "Samanea saman", "name_th": "จามจุรี"}])
+        # 112 ตัน / 4.6 = 24.3
+        assert out["equivalent_cars_off_road"] == round(112.0 / 4.6, 1)
+
+    def test_methodology_includes_citations(self):
+        out = estimate_impact(100_000, [])
+        assert "methodology" in out
+        assert out["methodology"]["priority_threshold"] == IMPACT_DEFAULTS["priority_threshold"]
+        assert out["methodology"]["trees_per_ha"] == IMPACT_DEFAULTS["trees_per_ha"]
+        assert any("IPCC" in s for s in out["methodology"]["sources"])
+        assert any("Bowler" in s for s in out["methodology"]["sources"])
+
+    def test_thai_species_have_coefficients(self):
+        # smoke check: species หลักที่ใช้แนะนำต้องมีค่า coefficient
+        for sp in ["Samanea saman", "Pterocarpus indicus", "Tectona grandis",
+                   "Dipterocarpus alatus", "Hopea odorata"]:
+            assert sp in TREE_CO2_PER_YEAR, f"missing coefficient: {sp}"
+            assert TREE_CO2_PER_YEAR[sp] > 0

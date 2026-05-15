@@ -948,6 +948,72 @@ export default function Sidebar({ data, handlers }) {
                 </p>
               </div>
 
+              {/* Projected impact — CO₂ sequestration + cooling */}
+              {recommendData.impact && recommendData.impact.trees_total > 0 && (
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '600', color: '#202124', marginBottom: '6px' }}>
+                    🌍 ผลกระทบที่คาดการณ์
+                    <span style={{ fontSize: '0.7rem', color: '#5f6368', fontWeight: '400', marginLeft: '6px' }}>
+                      (ถ้าปลูกครบทั้งพื้นที่ priority สูง)
+                    </span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '8px 10px' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#047857', fontWeight: '500' }}>🌳 ต้นไม้ทั้งหมด</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#065f46' }}>
+                        {recommendData.impact.trees_total.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#5f6368' }}>
+                        ใน {recommendData.impact.plantable_area_km2} km²
+                        ({recommendData.impact.plantable_area_ha.toLocaleString()} ไร่)
+                      </div>
+                    </div>
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px 10px' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#1e40af', fontWeight: '500' }}>🌍 CO₂ ดูดซับ/ปี</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#1e3a8a' }}>
+                        {recommendData.impact.annual_co2_tonnes.toLocaleString()} ตัน
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#5f6368' }}>
+                        = รถยนต์ ~{recommendData.impact.equivalent_cars_off_road.toLocaleString()} คัน ออกจากถนน
+                      </div>
+                    </div>
+                    <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '6px', padding: '8px 10px', gridColumn: '1 / -1' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#a16207', fontWeight: '500' }}>❄️ อุณหภูมิที่คาดว่าจะลด (ในเขตปลูก)</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#854d0e' }}>
+                        {recommendData.impact.expected_delta_lst_c}°C
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#5f6368' }}>
+                        เมื่อ canopy เต็มที่ (~{recommendData.impact.maturity_years} ปี)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Per-species breakdown */}
+                  {recommendData.impact.species_breakdown?.length > 0 && (
+                    <details style={{ marginTop: '8px' }}>
+                      <summary style={{ fontSize: '0.7rem', color: '#5f6368', cursor: 'pointer', userSelect: 'none' }}>
+                        ▸ รายละเอียดต่อพันธุ์ ({recommendData.impact.species_breakdown.length} ชนิด)
+                      </summary>
+                      <div style={{ marginTop: '6px', fontSize: '0.7rem' }}>
+                        {recommendData.impact.species_breakdown.map((sp, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', background: i % 2 === 0 ? '#fff' : '#fafafa', borderRadius: '3px' }}>
+                            <span style={{ color: '#374151' }}>{sp.name_th}</span>
+                            <span style={{ fontFamily: 'monospace', color: '#5f6368' }}>
+                              {sp.trees.toLocaleString()} ต้น · {sp.kg_co2_per_tree} kg CO₂/ต้น/ปี
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  <p className="data-note" style={{ marginTop: '6px', lineHeight: 1.5 }}>
+                    * ค่าเป็นการประมาณการตามค่าสัมประสิทธิ์มาตรฐาน — ขึ้นกับดิน อายุ ระยะปลูก<br />
+                    * อ้างอิง: {recommendData.impact.methodology?.sources?.join(' · ') || 'IPCC + Bowler 2010'}
+                  </p>
+                </div>
+              )}
+
               {/* Recommended tree species */}
               {recommendData.recommended_species?.species?.length > 0 && (
                 <div>

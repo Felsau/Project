@@ -81,3 +81,15 @@ class RankingResponse(BaseModel):
     who_pass_count: int
     who_fail_count: int
     data: list[RankingRow]
+
+
+# ── Timelapse ────────────────────────────────────────────────────────────────
+class TimelapseResponse(BaseModel):
+    """NDVI ประจำปีของทุกจังหวัด ใน range ที่กำหนด — เล่นเป็น animation บนแผนที่
+    data['Bangkok']['2020'] = 0.42  (อาจ missing บางปีถ้ายังไม่ compute)
+    main.py skip row ที่ ndvi_mean=None แล้ว — value ใน dict จึงเป็น float เสมอ"""
+    start_year: int
+    end_year: int
+    years: list[int]
+    province_count: int
+    data: dict[str, dict[str, float]]

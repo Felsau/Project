@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '../constants';
+import { pushError } from '../utils/toast';
 
 export function useNdviCache() {
   const [ndviCache, setNdviCache] = useState({});
 
   useEffect(() => {
     fetch(`${API_BASE}/cache`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
         const cache = {};
         const cacheYear = {};
@@ -18,7 +22,10 @@ export function useNdviCache() {
         });
         setNdviCache(cache);
       })
-      .catch(() => {});
+      .catch(err => {
+        console.warn('NDVI cache load failed:', err);
+        pushError('โหลด NDVI cache ไม่สำเร็จ — แผนที่อาจไม่มีสี ลองรีเฟรชหน้าเว็บ');
+      });
   }, []);
 
   return { ndviCache, setNdviCache };

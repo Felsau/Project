@@ -1,0 +1,123 @@
+"""Tree planting impact coefficients — per-species CO₂ sequestration + cooling.
+
+References:
+  - IPCC 2019 Refinement to 2006 GL, Vol.4 Ch.4 — tropical secondary forest
+    above-ground biomass increment ~3.6 t C/ha/yr (≈ 22 kg CO₂/tree/yr
+    at 400 trees/ha standard reforestation density)
+  - Chave et al. 2014 (Global Change Biology) — pan-tropical allometric model
+  - Bowler et al. 2010 (Landscape & Urban Planning) — meta-analysis of urban
+    cooling: green sites cool ~1.0°C on average, up to 3°C in dense canopy
+  - EPA 2023 — passenger vehicle average ≈ 4.6 t CO₂/year
+  - Thai Royal Forest Department species records + local growth studies
+
+ค่าทุกตัวเป็น *steady-state* ของต้นไม้โตเต็มที่ (≈ 10–15 ปี) ในเขตร้อน
+ใช้เป็น order-of-magnitude estimate — ขึ้นกับดิน ระยะปลูก ภูมิอากาศ ฤดูกาล
+ไม่ใช่ค่าตายตัว
+"""
+
+# kg CO₂ sequestered per mature tree per year — species keyed by scientific name
+TREE_CO2_PER_YEAR: dict[str, float] = {
+    # ── ภาคกลาง ──────────────────────────────────────────────────────────────
+    "Samanea saman":            28.0,  # จามจุรี — large canopy, urban shade
+    "Pterocarpus indicus":      22.0,  # ประดู่บ้าน — medium-large hardwood
+    "Mimusops elengi":          14.0,  # พิกุล — smaller urban
+    "Lagerstroemia floribunda": 16.0,  # ตะแบกนา — medium ornamental
+    "Delonix regia":            18.0,  # หางนกยูงฝรั่ง — medium-large
+    # ── ภาคเหนือ ─────────────────────────────────────────────────────────────
+    "Tectona grandis":          24.0,  # สัก — fast-growing economic forest
+    "Alstonia scholaris":       20.0,  # พญาสัตบรรณ — fast-growing
+    "Afzelia xylocarpa":        26.0,  # มะค่าโมง — long-lived hardwood
+    "Syzygium cumini":          17.0,  # หว้า — fruit + shade
+    "Chukrasia tabularis":      22.0,  # ยมหิน — hardwood
+    # ── อีสาน ────────────────────────────────────────────────────────────────
+    "Pterocarpus macrocarpus":  23.0,  # ประดู่ป่า — drought-tolerant native
+    "Tamarindus indica":        15.0,  # มะขาม — fruit tree
+    "Dalbergia cochinchinensis": 21.0, # พะยูง — endangered hardwood
+    "Sindora siamensis":        18.0,  # มะค่าแต้ — native dry forest
+    "Hopea odorata":            25.0,  # ตะเคียนทอง — long-lived shade
+    # ── ตะวันออก ─────────────────────────────────────────────────────────────
+    "Dipterocarpus alatus":     32.0,  # ยางนา — large emergent forest
+    "Sandoricum koetjape":      16.0,  # กระท้อน — fruit + shade
+    # ── ตะวันตก ──────────────────────────────────────────────────────────────
+    "Acacia auriculiformis":    20.0,  # กระถินณรงค์ — N-fixer
+    # ── ใต้ ──────────────────────────────────────────────────────────────────
+    "Cotylelobium melanoxylon": 28.0,  # เคี่ยม — native S. Thailand
+    "Garcinia mangostana":      12.0,  # มังคุด — fruit tree, smaller
+    "Barringtonia acutangula":  15.0,  # จิกน้ำ — riparian medium
+}
+
+IMPACT_DEFAULTS = {
+    "priority_threshold": 0.5,         # priority score > นี้ = "ควรปลูกจริง"
+    "trees_per_ha":       400,         # standard reforestation density (FAO)
+    "default_kg_co2":     22.0,        # IPCC Tier 1 fallback
+    "delta_lst_c":        -1.5,        # °C cooling at mature canopy (Bowler 2010)
+    "maturity_years":     10,          # ปีที่ canopy ให้ค่า cooling เต็มที่
+    "car_co2_t_per_year": 4.6,         # ตัน — EPA 2023 passenger vehicle
+}
+
+CITATIONS = [
+    "IPCC 2019 Refinement to 2006 Guidelines, Vol.4 Ch.4 (tropical biomass)",
+    "Bowler D.E. et al. 2010, Landscape & Urban Planning (urban cooling meta-analysis)",
+    "Chave J. et al. 2014, Global Change Biology (pan-tropical allometry)",
+    "U.S. EPA 2023 (passenger vehicle CO₂ baseline)",
+]
+
+
+def estimate_impact(plantable_area_m2: float, species_list: list[dict]) -> dict:
+    """คำนวณ impact ของการปลูกในพื้นที่ที่กำหนด + species mix ที่แนะนำ.
+
+    Args:
+        plantable_area_m2: พื้นที่ปลูกได้จริง (m²) — มาจาก priority > threshold
+        species_list: list ของ species dict (มี key 'scientific', 'name_th')
+                      ปกติคือ recommended_species["species"]
+
+    Returns:
+        dict ที่มี trees_total, annual_co2_tonnes, equivalent_cars_off_road,
+        expected_delta_lst_c, species_breakdown (per-species count + CO₂)
+    """
+    plantable_ha = plantable_area_m2 / 10_000
+    plantable_km2 = plantable_area_m2 / 1_000_000
+    trees_total = int(plantable_ha * IMPACT_DEFAULTS["trees_per_ha"])
+
+    species_breakdown = []
+    if species_list and trees_total > 0:
+        per_species = trees_total // len(species_list)
+        # เศษที่เหลือ (modulo) — โยนเพิ่มให้ species แรก
+        remainder = trees_total - per_species * len(species_list)
+        co2_total_kg = 0.0
+        for i, sp in enumerate(species_list):
+            count = per_species + (remainder if i == 0 else 0)
+            kg_per_tree = TREE_CO2_PER_YEAR.get(
+                sp.get("scientific", ""), IMPACT_DEFAULTS["default_kg_co2"])
+            sp_co2 = count * kg_per_tree
+            co2_total_kg += sp_co2
+            species_breakdown.append({
+                "name_th":         sp.get("name_th", ""),
+                "scientific":      sp.get("scientific", ""),
+                "trees":           count,
+                "kg_co2_per_tree": kg_per_tree,
+                "annual_co2_kg":   round(sp_co2, 0),
+            })
+    else:
+        # ไม่มี species mix → ใช้ค่าเฉลี่ย IPCC
+        co2_total_kg = trees_total * IMPACT_DEFAULTS["default_kg_co2"]
+
+    annual_co2_tonnes = co2_total_kg / 1000
+    equivalent_cars = annual_co2_tonnes / IMPACT_DEFAULTS["car_co2_t_per_year"]
+
+    return {
+        "plantable_area_km2":       round(plantable_km2, 2),
+        "plantable_area_ha":        round(plantable_ha, 1),
+        "trees_total":              trees_total,
+        "annual_co2_tonnes":        round(annual_co2_tonnes, 1),
+        "annual_co2_kg":            round(co2_total_kg, 0),
+        "equivalent_cars_off_road": round(equivalent_cars, 1),
+        "expected_delta_lst_c":     IMPACT_DEFAULTS["delta_lst_c"],
+        "maturity_years":           IMPACT_DEFAULTS["maturity_years"],
+        "species_breakdown":        species_breakdown,
+        "methodology": {
+            "priority_threshold": IMPACT_DEFAULTS["priority_threshold"],
+            "trees_per_ha":       IMPACT_DEFAULTS["trees_per_ha"],
+            "sources":            CITATIONS,
+        },
+    }
