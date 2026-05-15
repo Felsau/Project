@@ -13,11 +13,13 @@ import { useTrendData }    from './hooks/useTrendData';
 import { useCompareData }  from './hooks/useCompareData';
 import { useRankingData }  from './hooks/useRankingData';
 import { useRecommendData } from './hooks/useRecommendData';
+import { useTimelapseData } from './hooks/useTimelapseData';
 import { buildMapLayers }  from './utils/mapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
 import MapTooltip from './components/MapTooltip';
 import Toast      from './components/Toast';
+import TimelapsePlayer from './components/TimelapsePlayer';
 import { pushError } from './utils/toast';
 
 function App() {
@@ -34,6 +36,10 @@ function App() {
   const compare  = useCompareData();
   const ranking  = useRankingData();
   const recommend = useRecommendData();
+  const timelapse = useTimelapseData();
+
+  // Time-lapse active → ใช้ ndvi ของปีที่เลือกแทน cache ปัจจุบัน (drop-in)
+  const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
 
   useEffect(() => {
     fetch('/thailand.json')
@@ -67,7 +73,7 @@ function App() {
 
   // Memoize layers — DeckGL จะ diff ทุก frame ถ้า array reference เปลี่ยน
   const layers = useMemo(() => buildMapLayers({
-    thailandData, ndviCache,
+    thailandData, ndviCache: effectiveNdviCache,
     selectedProvinceEN:    province.selectedProvinceEN,
     setSelectedProvince:   province.setSelectedProvince,
     setSelectedProvinceEN: province.setSelectedProvinceEN,
@@ -89,7 +95,7 @@ function App() {
     recommendData:    recommend.recommendData,
     recommendVisible: recommend.recommendVisible,
   }), [
-    thailandData, ndviCache,
+    thailandData, effectiveNdviCache,
     province.selectedProvinceEN,
     district.districtsData, district.districtCache, district.selectedDistrictEN,
     showingDistricts,
@@ -184,6 +190,7 @@ function App() {
           </DeckGL>
 
           {tooltip && <MapTooltip tooltip={tooltip} />}
+          <TimelapsePlayer timelapse={timelapse} />
         </div>
       </div>
     </div>

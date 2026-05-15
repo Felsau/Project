@@ -27,7 +27,7 @@ from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR,
                           YearParam, YEAR_MIN, YEAR_MAX)
 from routers import ndvi, lst, recommend, maps
-from schemas import RankingResponse
+from schemas import RankingResponse, TimelapseResponse
 
 GEE_PROJECT = os.getenv("GEE_PROJECT")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
@@ -142,9 +142,44 @@ def clear_cache():
 
 @app.delete("/cache/{province_name}", dependencies=[Depends(require_admin)])
 def clear_province_cache(province_name: str):
+    # Whitelist check — กัน admin พิมพ์ผิดแล้วลบ 0 row เงียบๆ
+    if province_name not in PROVINCE_GEOMETRIES:
+        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
     for table in CACHE_TABLES:
         supa_call(lambda s, t=table: s.table(t).delete().eq("province", province_name).execute())
     return {"message": f"✅ Cache cleared for {province_name}"}
+
+
+@app.get("/timelapse/ndvi/provinces", response_model=TimelapseResponse)
+def get_timelapse_ndvi(start_year: YearParam = 2015,
+                       end_year: YearParam = CURRENT_YEAR):
+    """รวม NDVI annual ของทุกจังหวัดใน range — สำหรับ time-lapse animation
+    คืนเฉพาะปีที่มี cache อยู่จริงใน Supabase (ไม่ trigger GEE compute)"""
+    if start_year > end_year:
+        raise HTTPException(status_code=400,
+            detail="start_year ต้องน้อยกว่าหรือเท่ากับ end_year")
+
+    result = supa_call(lambda s: s.table("ndvi_annual")
+                       .select("province,year,ndvi_mean")
+                       .gte("year", start_year)
+                       .lte("year", end_year)
+                       .execute())
+    data: dict[str, dict[str, float]] = {}
+    years_set: set[int] = set()
+    for row in result.data:
+        if row.get("ndvi_mean") is None:
+            continue
+        p, y = row["province"], row["year"]
+        data.setdefault(p, {})[str(y)] = row["ndvi_mean"]
+        years_set.add(y)
+
+    return {
+        "start_year": start_year,
+        "end_year": end_year,
+        "years": sorted(years_set),
+        "province_count": len(data),
+        "data": data,
+    }
 
 
 @app.get("/analysis/ranking", response_model=RankingResponse)

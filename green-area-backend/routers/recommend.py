@@ -9,6 +9,7 @@ pop_need     : ประชากรหนาแน่น (WorldPop) = คนเ
 """
 from fastapi import APIRouter, HTTPException
 import logging
+import os
 import time
 import ee
 
@@ -16,6 +17,7 @@ from dependencies import (supa_call, internal_error,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
 from gee_utils import mask_s2_clouds, get_lst_col
+from impact import estimate_impact, IMPACT_DEFAULTS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,13 +28,14 @@ W_LST  = 0.30   # ความร้อนสำคัญรอง
 W_POP  = 0.30   # ประชากรเป็นปัจจัยร่วม
 
 # WorldPop ปีล่าสุดที่มีข้อมูล global — confirm THA up to 2021 · ตั้ง env override ได้
-import os as _os
-WORLDPOP_YEAR = int(_os.getenv("WORLDPOP_YEAR", "2021"))
+WORLDPOP_YEAR = int(os.getenv("WORLDPOP_YEAR", "2021"))
 
 # In-process TTL cache สำหรับ tile URL — ลดเวลา cache hit จาก ~30s → <50ms
 # Key: (province, district|None, year) → (tile_url, expires_at_unix)
 # TTL 30 นาที (GEE session token อยู่ได้หลายชั่วโมง — 30 นาทีปลอดภัย)
+# max size กัน memory โต — 77 จังหวัด × ~5 ปี + districts ~ 200 พอ
 _TILE_URL_TTL = 1800
+_TILE_URL_CACHE_MAX = 200
 _TILE_URL_CACHE: dict[tuple, tuple[str, float]] = {}
 
 
@@ -45,6 +48,13 @@ def _get_cached_tile_url(province: str, district: str | None, year: int) -> str 
 
 
 def _store_tile_url(province: str, district: str | None, year: int, url: str) -> None:
+    # ถ้าเต็ม — เคลียร์ entries ที่หมดอายุก่อน, ไม่พอก็ evict อันเก่าสุด (insertion order)
+    if len(_TILE_URL_CACHE) >= _TILE_URL_CACHE_MAX:
+        now = time.time()
+        for k in [k for k, (_, exp) in _TILE_URL_CACHE.items() if exp <= now]:
+            del _TILE_URL_CACHE[k]
+        while len(_TILE_URL_CACHE) >= _TILE_URL_CACHE_MAX:
+            _TILE_URL_CACHE.pop(next(iter(_TILE_URL_CACHE)))
     _TILE_URL_CACHE[(province, district, year)] = (url, time.time() + _TILE_URL_TTL)
 
 
@@ -308,6 +318,17 @@ def _get_top_locations(priority: ee.Image, geom: ee.Geometry, n: int = 10):
     return results
 
 
+def _compute_plantable_area_m2(priority: ee.Image, geom: ee.Geometry) -> float:
+    """รวม pixel area ที่ priority > threshold = "ที่ควรปลูกจริง" — สำหรับ impact projection.
+    ใช้ scale 100m balance ระหว่างความเร็วและความแม่น (priority ก็คำนวณที่ ~100m เช่นกัน)"""
+    high_priority = priority.gt(IMPACT_DEFAULTS["priority_threshold"])
+    area_m2 = (ee.Image.pixelArea().updateMask(high_priority)
+               .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
+                             scale=100, maxPixels=1e10, bestEffort=True)
+               .get('area').getInfo())
+    return float(area_m2 or 0)
+
+
 def _get_heatmap_url(priority: ee.Image) -> str:
     """ขอ XYZ tile URL จาก GEE สำหรับแสดงเป็น heatmap layer.
 
@@ -332,6 +353,7 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
 
     w_ndvi, w_lst, w_pop = _normalize_weights(w_ndvi, w_lst, w_pop)
     is_default = (w_ndvi, w_lst, w_pop) == (W_NDVI, W_LST, W_POP)
+    species_info = _get_recommended_species(province_name)
 
     # Custom weights → bypass DB cache (top_locations จะต่างไปทุก combination)
     if is_default:
@@ -341,12 +363,23 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
         if cached.data:
             row = cached.data[0]
             tile_url = _get_cached_tile_url(province_name, None, year)
-            if tile_url is None:
+            impact = row.get("impact")
+            if tile_url is None or impact is None:
                 try:
                     geom = ee.Geometry(raw_geom)
                     priority, _, _, _ = _compute_priority(geom, year, w_ndvi, w_lst, w_pop)
-                    tile_url = _get_heatmap_url(priority)
-                    _store_tile_url(province_name, None, year, tile_url)
+                    if tile_url is None:
+                        tile_url = _get_heatmap_url(priority)
+                        _store_tile_url(province_name, None, year, tile_url)
+                    if impact is None:
+                        plantable_m2 = _compute_plantable_area_m2(priority, geom)
+                        impact = estimate_impact(plantable_m2, species_info.get("species", []))
+                        # back-fill impact ลง cache row เพื่อรอบหลังไม่ต้อง recompute
+                        try:
+                            supa_call(lambda s: s.table("planting_recommendations")
+                                .update({"impact": impact}).eq("id", row["id"]).execute())
+                        except Exception as cache_err:
+                            logger.warning("⚠️  Impact back-fill failed (non-fatal): %s", cache_err)
                 except Exception as e:
                     logger.error("❌ Recommend tile refresh error [%s/%d]", province_name, year, exc_info=True)
                     raise internal_error()
@@ -354,7 +387,8 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
                 "province": province_name, "year": year,
                 "tile_url": tile_url, "top_locations": row["top_locations"],
                 "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
-                "recommended_species": _get_recommended_species(province_name),
+                "recommended_species": species_info,
+                "impact": impact,
                 "from_cache": True, "cached_at": row["created_at"],
             }
 
@@ -366,6 +400,8 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
         priority, _, _, _ = _compute_priority(geom, year, w_ndvi, w_lst, w_pop)
         tile_url = _get_heatmap_url(priority)
         top = _get_top_locations(priority, geom, n=10)
+        plantable_m2 = _compute_plantable_area_m2(priority, geom)
+        impact = estimate_impact(plantable_m2, species_info.get("species", []))
 
         # Cache เฉพาะ default weights (ไม่งั้นจะปนกัน + DB บวมโดยเปล่าประโยชน์)
         if is_default:
@@ -373,7 +409,7 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
             try:
                 supa_call(lambda s: s.table("planting_recommendations").insert({
                     "province": province_name, "district": None, "year": year,
-                    "tile_url": tile_url, "top_locations": top,
+                    "tile_url": tile_url, "top_locations": top, "impact": impact,
                 }).execute())
             except Exception as cache_err:
                 logger.warning("⚠️  Cache insert failed (non-fatal): %s", cache_err)
@@ -382,7 +418,8 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
             "province": province_name, "year": year,
             "tile_url": tile_url, "top_locations": top,
             "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
-            "recommended_species": _get_recommended_species(province_name),
+            "recommended_species": species_info,
+            "impact": impact,
             "from_cache": False,
         }
     except HTTPException:
@@ -404,6 +441,7 @@ def recommend_district(province_name: str, district_name: str,
 
     w_ndvi, w_lst, w_pop = _normalize_weights(w_ndvi, w_lst, w_pop)
     is_default = (w_ndvi, w_lst, w_pop) == (W_NDVI, W_LST, W_POP)
+    species_info = _get_recommended_species(province_name)
 
     if is_default:
         cached = supa_call(lambda s: s.table("planting_recommendations")
@@ -412,12 +450,22 @@ def recommend_district(province_name: str, district_name: str,
         if cached.data:
             row = cached.data[0]
             tile_url = _get_cached_tile_url(province_name, district_name, year)
-            if tile_url is None:
+            impact = row.get("impact")
+            if tile_url is None or impact is None:
                 try:
                     geom = ee.Geometry(raw_geom)
                     priority, _, _, _ = _compute_priority(geom, year, w_ndvi, w_lst, w_pop)
-                    tile_url = _get_heatmap_url(priority)
-                    _store_tile_url(province_name, district_name, year, tile_url)
+                    if tile_url is None:
+                        tile_url = _get_heatmap_url(priority)
+                        _store_tile_url(province_name, district_name, year, tile_url)
+                    if impact is None:
+                        plantable_m2 = _compute_plantable_area_m2(priority, geom)
+                        impact = estimate_impact(plantable_m2, species_info.get("species", []))
+                        try:
+                            supa_call(lambda s: s.table("planting_recommendations")
+                                .update({"impact": impact}).eq("id", row["id"]).execute())
+                        except Exception as cache_err:
+                            logger.warning("⚠️  Impact back-fill failed (non-fatal): %s", cache_err)
                 except Exception as e:
                     logger.error("❌ Recommend tile refresh error [%s/%s/%d]", province_name, district_name, year, exc_info=True)
                     raise internal_error()
@@ -425,7 +473,8 @@ def recommend_district(province_name: str, district_name: str,
                 "province": province_name, "district": district_name, "year": year,
                 "tile_url": tile_url, "top_locations": row["top_locations"],
                 "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
-                "recommended_species": _get_recommended_species(province_name),
+                "recommended_species": species_info,
+                "impact": impact,
                 "from_cache": True, "cached_at": row["created_at"],
             }
 
@@ -437,13 +486,16 @@ def recommend_district(province_name: str, district_name: str,
         priority, _, _, _ = _compute_priority(geom, year, w_ndvi, w_lst, w_pop)
         tile_url = _get_heatmap_url(priority)
         top = _get_top_locations(priority, geom, n=10)
+        plantable_m2 = _compute_plantable_area_m2(priority, geom)
+        impact = estimate_impact(plantable_m2, species_info.get("species", []))
 
         if is_default:
             _store_tile_url(province_name, district_name, year, tile_url)
             try:
                 supa_call(lambda s: s.table("planting_recommendations").insert({
                     "province": province_name, "district": district_name,
-                    "year": year, "tile_url": tile_url, "top_locations": top,
+                    "year": year, "tile_url": tile_url,
+                    "top_locations": top, "impact": impact,
                 }).execute())
             except Exception as cache_err:
                 logger.warning("⚠️  Cache insert failed (non-fatal): %s", cache_err)
@@ -452,7 +504,8 @@ def recommend_district(province_name: str, district_name: str,
             "province": province_name, "district": district_name, "year": year,
             "tile_url": tile_url, "top_locations": top,
             "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
-            "recommended_species": _get_recommended_species(province_name),
+            "recommended_species": species_info,
+            "impact": impact,
             "from_cache": False,
         }
     except HTTPException:
