@@ -1,0 +1,94 @@
+"""Time-series (Phase B-2) — multi-year NDVI+LST trend จาก cached annual rows."""
+from fastapi import APIRouter, HTTPException
+
+from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          CURRENT_YEAR, YearParam)
+
+router = APIRouter()
+
+
+@router.get("/analysis/timeseries/{province_name}")
+def get_timeseries(province_name: str,
+                   start_year: YearParam = CURRENT_YEAR - 4,
+                   end_year: YearParam = CURRENT_YEAR,
+                   district_name: str | None = None):
+    """ดึง NDVI + LST รายปี (annual) ย้อนหลังจาก cache เพื่อแสดงแนวโน้ม.
+
+    เฉพาะปีที่มี cached row เท่านั้น — ไม่ trigger GEE compute ใหม่ เพื่อให้ response ไว.
+    ถ้า district_name ระบุ → ดึง district_*_annual แทน
+    """
+    if district_name:
+        if (province_name, district_name) not in DISTRICT_GEOMETRIES:
+            raise HTTPException(status_code=404,
+                detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
+        ndvi_table, lst_table = "district_ndvi_annual", "district_lst_annual"
+    else:
+        if province_name not in PROVINCE_GEOMETRIES:
+            raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+        ndvi_table, lst_table = "ndvi_annual", "province_lst_annual"
+
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+    year_range = list(range(start_year, end_year + 1))
+    if not year_range:
+        raise HTTPException(status_code=400, detail="ช่วงปีไม่ถูกต้อง")
+
+    def _q(table, fields):
+        def go(s):
+            q = (s.table(table).select(fields)
+                 .eq("province", province_name)
+                 .in_("year", year_range))
+            if district_name:
+                q = q.eq("district", district_name)
+            return q.execute()
+        return supa_call(go).data
+
+    ndvi_rows = _q(ndvi_table,
+                   "year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person")
+    lst_rows = _q(lst_table, "year,lst_mean,lst_min,lst_max")
+
+    n_by_y = {r["year"]: r for r in ndvi_rows}
+    l_by_y = {r["year"]: r for r in lst_rows}
+
+    series = []
+    for y in year_range:
+        n, l = n_by_y.get(y), l_by_y.get(y)
+        if not n and not l:
+            continue
+        series.append({
+            "year": y,
+            "ndvi_mean": n.get("ndvi_mean") if n else None,
+            "ndvi_min": n.get("ndvi_min") if n else None,
+            "ndvi_max": n.get("ndvi_max") if n else None,
+            "green_area_pct": n.get("green_area_pct") if n else None,
+            "green_area_km2": n.get("green_area_km2") if n else None,
+            "green_area_m2_per_person": n.get("green_area_m2_per_person") if n else None,
+            "lst_mean": l.get("lst_mean") if l else None,
+            "lst_min": l.get("lst_min") if l else None,
+            "lst_max": l.get("lst_max") if l else None,
+        })
+
+    # คำนวณ delta สรุป (จุดแรก → จุดสุดท้าย) ถ้ามีข้อมูลครบทั้งสองข้าง
+    summary = {}
+    valid_ndvi = [s for s in series if s.get("ndvi_mean") is not None]
+    valid_lst = [s for s in series if s.get("lst_mean") is not None]
+    if len(valid_ndvi) >= 2:
+        first, last = valid_ndvi[0], valid_ndvi[-1]
+        summary["ndvi_delta"] = round(last["ndvi_mean"] - first["ndvi_mean"], 4)
+        summary["ndvi_first_year"] = first["year"]
+        summary["ndvi_last_year"] = last["year"]
+    if len(valid_lst) >= 2:
+        first, last = valid_lst[0], valid_lst[-1]
+        summary["lst_delta"] = round(last["lst_mean"] - first["lst_mean"], 2)
+        summary["lst_first_year"] = first["year"]
+        summary["lst_last_year"] = last["year"]
+
+    return {
+        "province": province_name,
+        "district": district_name,
+        "start_year": start_year, "end_year": end_year,
+        "years_with_data": len(series),
+        "years_in_range": len(year_range),
+        "data": series,
+        "summary": summary,
+    }

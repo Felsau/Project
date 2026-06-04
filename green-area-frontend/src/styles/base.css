@@ -1,0 +1,55 @@
+/* Reset + base */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--sans);
+  font-size: var(--t-base);
+  line-height: 1.5;
+  color: var(--ink-1);
+  background: var(--paper);
+  font-feature-settings: 'tnum', 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button { font: inherit; color: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
+
+/* Numbers always tabular */
+.num, .mono, [data-num] { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+/* App shell — sidebar pinned, map fills the rest */
+.App {
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  grid-template-rows: 40px 1fr;
+  grid-template-areas:
+    'header header'
+    'side   map';
+  overflow: hidden;
+}
+
+.App[data-sidebar="collapsed"] { grid-template-columns: 0 1fr; }
+
+.topbar { grid-area: header; position: relative; z-index: var(--z-header); }
+.side   { grid-area: side;   position: relative; z-index: var(--z-sidebar); overflow: hidden; }
+.canvas { grid-area: map;    position: relative; z-index: var(--z-map);     overflow: hidden; background: var(--paper-2); }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .App {
+    grid-template-columns: 1fr;
+    grid-template-rows: 40px 50vh 1fr;
+    grid-template-areas:
+      'header'
+      'map'
+      'side';
+  }
+  .topbar__brand { min-width: 0; }
+  .side { border-right: none; border-top: 1px solid var(--rule); }
+}

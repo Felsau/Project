@@ -1,0 +1,43 @@
+// Shared low-level helpers สำหรับ export (timestamp, download, CSV encode, canvas capture).
+import html2canvas from 'html2canvas';
+
+export const ts = () => {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+};
+
+export const triggerDownload = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const csvCell = (v) => {
+  if (v == null) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const rowsToCsv = (rows) =>
+  rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+
+// UTF-8 BOM ทำให้ Excel เปิดภาษาไทยได้
+export const downloadCsv = (rows, filename) => {
+  const csv = '﻿' + rowsToCsv(rows);
+  triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), filename);
+};
+
+export const captureElement = async (element) => {
+  return html2canvas(element, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    useCORS: true,
+    logging: false,
+  });
+};

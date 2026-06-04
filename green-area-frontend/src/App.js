@@ -28,6 +28,7 @@ function App() {
   const [viewState, setViewState]       = useState(INITIAL_VIEW_STATE);
   const [tooltip, setTooltip]           = useState(null);
   const [sidebarTab, setSidebarTab]     = useState('stats');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const { ndviCache, setNdviCache } = useNdviCache();
   const province = useProvinceData({ setNdviCache });
@@ -38,7 +39,6 @@ function App() {
   const recommend = useRecommendData();
   const timelapse = useTimelapseData();
 
-  // Time-lapse active → ใช้ ndvi ของปีที่เลือกแทน cache ปัจจุบัน (drop-in)
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
 
   useEffect(() => {
@@ -71,7 +71,6 @@ function App() {
   const handleViewStateChange = useCallback(({ viewState: vs }) => setViewState(vs), []);
   const getCursor = useCallback(({ isHovering }) => (isHovering ? 'pointer' : 'default'), []);
 
-  // Memoize layers — DeckGL จะ diff ทุก frame ถ้า array reference เปลี่ยน
   const layers = useMemo(() => buildMapLayers({
     thailandData, ndviCache: effectiveNdviCache,
     selectedProvinceEN:    province.selectedProvinceEN,
@@ -92,6 +91,7 @@ function App() {
     resetTrend:            trend.resetTrend,
     showingDistricts,
     setViewState, setTooltip, setSidebarTab,
+    zoom: viewState.zoom,
     recommendData:    recommend.recommendData,
     recommendVisible: recommend.recommendVisible,
   }), [
@@ -99,14 +99,15 @@ function App() {
     province.selectedProvinceEN,
     district.districtsData, district.districtCache, district.selectedDistrictEN,
     showingDistricts,
+    viewState.zoom,
     recommend.recommendData, recommend.recommendVisible,
-    // setter/fetch refs จาก hooks เสถียร (useCallback) — ไม่ต้องใส่
   ]);
 
   const sidebarData = {
     selectedProvince:     province.selectedProvince,
     selectedProvinceEN:   province.selectedProvinceEN,
-    selectedDistrict:     district.selectedDistrict,
+    selectedDistrict:     district.selectedDistrict,    // Thai — for display
+    selectedDistrictEN:   district.selectedDistrictEN,  // English — for API calls
     provinceArea:         province.provinceArea,
     districtArea:         district.districtArea,
     districtsLoading:     district.districtsLoading,
@@ -168,31 +169,47 @@ function App() {
   };
 
   return (
-    <div className="App">
-      <AppHeader loading={loading} />
-      <Toast />
+    <div className="App" data-sidebar={sidebarCollapsed ? 'collapsed' : 'open'}>
+      <AppHeader
+        loading={loading}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+      />
 
-      <div className="main-layout">
-        <aside className="sidebar">
-          <Sidebar data={sidebarData} handlers={sidebarHandlers} />
-        </aside>
+      <aside className="side">
+        <Sidebar data={sidebarData} handlers={sidebarHandlers} />
+      </aside>
 
-        <div className="map-container">
-          <DeckGL
-            viewState={viewState}
-            onViewStateChange={handleViewStateChange}
-            controller={true}
-            layers={layers}
-            getCursor={getCursor}
-            glOptions={{ preserveDrawingBuffer: true }}
-          >
-            <Map mapStyle={MAP_STYLE} preserveDrawingBuffer={true} />
-          </DeckGL>
+      <div className="canvas">
+        <DeckGL
+          viewState={viewState}
+          onViewStateChange={handleViewStateChange}
+          controller={true}
+          layers={layers}
+          getCursor={getCursor}
+          glOptions={{ preserveDrawingBuffer: true }}
+        >
+          <Map mapStyle={MAP_STYLE} preserveDrawingBuffer={true} />
+        </DeckGL>
+        {tooltip && <MapTooltip tooltip={tooltip} />}
 
-          {tooltip && <MapTooltip tooltip={tooltip} />}
-          <TimelapsePlayer timelapse={timelapse} />
+        <div className="map-controls">
+          <button
+            className="map-btn"
+            onClick={() => setViewState({
+              ...INITIAL_VIEW_STATE,
+              transitionDuration: 800,
+              transitionInterpolator: new FlyToInterpolator(),
+            })}
+            aria-label="รีเซ็ตมุมมอง"
+            title="รีเซ็ตมุมมอง"
+          >⟲</button>
         </div>
+
+        <TimelapsePlayer timelapse={timelapse} />
       </div>
+
+      <Toast />
     </div>
   );
 }

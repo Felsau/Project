@@ -41,7 +41,16 @@ export function useRecommendData() {
       const qs  = params.toString();
       const url = `${API_BASE}${path}${qs ? `?${qs}` : ''}`;
       const res  = await fetchWithRetry(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // อ่าน detail (FastAPI HTTPException) ให้ user เห็นเหตุผลจริง เช่น
+        // "ปี 2026 ยังไม่มีข้อมูล Sentinel-2 เพียงพอ — ลองเลือกปีก่อนหน้านี้"
+        let detail = `HTTP ${res.status}`;
+        try { const j = await res.json(); if (j?.detail) detail = j.detail; }
+        catch { /* response ไม่ใช่ JSON — ใช้ status เป็น message พอ */ }
+        const e = new Error(detail);
+        e.status = res.status;
+        throw e;
+      }
       const json = await res.json();
       // กัน race ซ้อน: เช็คอีกครั้งหลัง await ว่ายังเป็น request ปัจจุบันอยู่หรือไม่
       if (controller.signal.aborted) return;
@@ -52,7 +61,10 @@ export function useRecommendData() {
       if (err?.name === 'AbortError') return;  // ถูก cancel ไม่ต้อง toast
       console.error('fetchRecommendation error:', err);
       setRecommendData(null);
-      pushError('วิเคราะห์ AI Recommend ไม่สำเร็จ — ลองอีกครั้ง');
+      // 4xx → server บอกเหตุชัดเจน แสดง detail ตรงๆ · 5xx/network → generic
+      pushError(err?.status >= 400 && err?.status < 500
+        ? err.message
+        : 'วิเคราะห์ AI Recommend ไม่สำเร็จ — ลองอีกครั้ง');
     } finally {
       // เคลียร์ ref เฉพาะถ้า controller ตัวนี้ยังเป็นตัวล่าสุด
       if (inflightRef.current === controller) {

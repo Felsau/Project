@@ -20,6 +20,11 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 WHO_STANDARD_M2 = 9
 
+# ปี WorldPop (GP/100m/pop) ที่ใช้คำนวณประชากร — coverage ใน GEE = 2000–2020
+# 2021 ไม่มีจริงสำหรับ THA → default 2020 (ปีล่าสุด) · override ผ่าน env ได้
+# นิยามที่เดียวให้ทั้ง /recommend (scoring) และ /analysis/urban-subset ใช้ร่วมกัน กันค่า drift
+WORLDPOP_YEAR = int(os.getenv("WORLDPOP_YEAR", "2020"))
+
 # Cache schema version — bump เมื่อเปลี่ยน compute logic ที่ทำให้ค่าเก่าไม่ valid
 # (เช่น เพิ่ม water mask, เปลี่ยน NDVI threshold)
 # _is_stale() จะถือว่า row ที่ cache_version < CURRENT_CACHE_VERSION = stale

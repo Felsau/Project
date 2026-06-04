@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root {
+  /* Ink scale — content sits on light surfaces */
+  --ink-0:  #0b0d0c;
+  --ink-1:  #1f2421;
+  --ink-2:  #3a423d;
+  --ink-3:  #6b736d;
+  --ink-4:  #98a09a;
+  --ink-5:  #c1c7c2;
+  --ink-6:  #e1e5e2;
+  --ink-7:  #eef1ee;
+  --ink-8:  #f6f7f5;
+
+  /* Single accent — used sparingly */
+  --accent:        #1f6f43;
+  --accent-strong: #145232;
+  --accent-soft:   #e8f0eb;
+
+  /* Functional — used only when content demands it */
+  --warn:        #8b5a00;
+  --warn-soft:   #fdf6e3;
+  --crit:        #a02020;
+  --crit-soft:   #fbeded;
+
+  /* Surfaces */
+  --paper:    #fbfbfa;
+  --paper-2:  #f4f4f1;
+  --surface:  #ffffff;
+  --rule:     #e1e3df;
+  --rule-2:   #cdd1ca;
+
+  /* Typography */
+  --sans:  'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, 'Courier New', monospace;
+
+  /* Type scale — kept tight */
+  --t-xs:  11.5px;
+  --t-sm:  12.5px;
+  --t-base: 13.5px;
+  --t-md:  15px;
+  --t-lg:  17px;
+  --t-xl:  22px;
+  --t-2xl: 30px;
+
+  /* Spacing (4-px base, restrained) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  --rad-sm: 3px;
+  --rad:    5px;
+  --rad-lg: 8px;
+
+  --z-map:     1;
+  --z-sidebar: 20;
+  --z-header:  30;
+  --z-toast:   80;
+  --z-tooltip: 90;
+}
