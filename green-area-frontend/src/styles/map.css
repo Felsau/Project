@@ -1,0 +1,54 @@
+/* Export controls */
+.export-bar {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+}
+
+.export-btn {
+  flex: 1;
+  padding: 7px 8px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--rule);
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.export-btn:last-child { border-right: none; }
+.export-btn:hover:not(:disabled) { background: var(--ink-8); color: var(--ink-0); }
+.export-btn:disabled { color: var(--ink-4); cursor: wait; }
+
+/* Map area — floating controls in the corner */
+.canvas { background: var(--paper-2); }
+
+.map-controls {
+  position: absolute;
+  top: var(--s-3);
+  right: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--rad);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.map-btn {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.map-btn:last-child { border-bottom: none; }
+.map-btn:hover { background: var(--ink-8); color: var(--ink-0); }

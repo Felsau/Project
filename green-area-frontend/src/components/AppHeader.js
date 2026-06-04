@@ -1,28 +1,23 @@
-export default function AppHeader({ loading }) {
+export default function AppHeader({ loading, sidebarCollapsed, onToggleSidebar }) {
   return (
-    <>
-      <header className="app-header App-title">
-        <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div>
-            <div className="header-title" style={{ fontSize: '1.2rem', fontWeight: '500', color: '#202124' }}>
-              Green Area Analysis
-            </div>
-            <div className="header-subtitle" style={{ fontSize: '0.85rem', color: '#5f6368' }}>
-              ระบบวิเคราะห์พื้นที่สีเขียว · ประเทศไทย
-            </div>
-          </div>
+    <header className="topbar">
+      <div className="topbar__brand">
+        <div className="topbar__mark" aria-hidden="true" />
+        <div className="topbar__title">
+          Green Area Analysis<em>Thailand</em>
         </div>
-        <div className="header-status" style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.8rem', color: '#5f6368' }}>
-          <span>SRC</span>
-          <span className="mock-badge" style={{ backgroundColor: '#e8f0fe', color: '#1a73e8', border: 'none', fontWeight: '500' }}>
-            SENTINEL-2 · GEE · 3D
-          </span>
-        </div>
-      </header>
-
-      {loading && (
-        <div className="loading-bar" style={{ height: '3px', backgroundColor: '#1a73e8', width: '100%', animation: 'loading 2s infinite' }} />
-      )}
-    </>
+      </div>
+      <div className="topbar__meta">
+        <span className="topbar__source"><strong>Sentinel-2</strong> · Google Earth Engine</span>
+      </div>
+      <button
+        className="topbar__sidebar-toggle"
+        onClick={onToggleSidebar}
+        aria-label={sidebarCollapsed ? 'แสดงแผงข้อมูล' : 'ซ่อนแผงข้อมูล'}
+      >
+        {sidebarCollapsed ? 'แสดงแผง ›' : '‹ ซ่อนแผง'}
+      </button>
+      {loading && <div className="loading-bar" />}
+    </header>
   );
 }
