@@ -4,6 +4,7 @@ import TrendTab     from './tabs/TrendTab';
 import CompareTab   from './tabs/CompareTab';
 import RecommendTab from './tabs/RecommendTab';
 import CoolingTab   from './tabs/CoolingTab';
+import ProvinceSearch from './ProvinceSearch';
 
 const TABS = [
   { id: 'stats',     label: 'ข้อมูล' },
@@ -19,8 +20,9 @@ export default function Sidebar({ data, handlers }) {
     sidebarTab,
     ndviStats, districtNdviStats, ndviLoading, districtNdviLoading,
     districtsLoading,
+    provinceList, ndviCache,
   } = data;
-  const { onReset, setSidebarTab } = handlers;
+  const { onReset, setSidebarTab, onSelectProvince } = handlers;
 
   const hasProvince = !!selectedProvince;
   const dataReady   = !!(ndviStats || districtNdviStats);
@@ -33,6 +35,14 @@ export default function Sidebar({ data, handlers }) {
 
   return (
     <>
+      <div className="psearch-bar">
+        <ProvinceSearch
+          provinces={provinceList}
+          onSelect={onSelectProvince}
+          ndviCache={ndviCache}
+        />
+      </div>
+
       {hasProvince ? (
         <>
           <nav className="tabs" role="tablist">
