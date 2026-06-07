@@ -130,8 +130,11 @@ Frontend test suite ตอนนี้คุม smoke render + sidebar empty sta
 - **Frontend** → Vercel/Netlify (CRA static)
 - **Backend** → Render/Railway (Python web service)
   - Build: `pip install -r requirements.txt`
-  - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+  - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'`
+    - `--proxy-headers` จำเป็นเมื่ออยู่หลัง reverse proxy เพื่อให้ rate-limit เห็น IP จริงของผู้ใช้ ไม่ใช่ IP ของ proxy (มี [`Procfile`](green-area-backend/Procfile) ให้ใช้แล้ว)
+    - production ต้องตั้ง `ADMIN_TOKEN` เป็น secret สุ่มยาว ≥ 16 ตัว — ไม่งั้น backend จะ refuse ที่จะ start
 - ตั้ง `ALLOWED_ORIGINS` ให้ตรงกับ frontend URL
+- **Frontend** security headers ตั้งไว้ใน [`vercel.json`](green-area-frontend/vercel.json) / [`netlify.toml`](green-area-frontend/netlify.toml) · CSP เป็น Report-Only — ทดสอบใน browser แล้วค่อยเปลี่ยนเป็น enforcing
 - คั่น `thailand.json` กับ `thailand_districts.json` ระหว่าง 2 service — backend จะหาตามลำดับ:
   1. ENV `THAILAND_GEOJSON_PATH` / `DISTRICTS_GEOJSON_PATH` (override)
   2. `green-area-backend/data/` (production — copy 2 ไฟล์เข้า image)
