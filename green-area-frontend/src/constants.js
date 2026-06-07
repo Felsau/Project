@@ -42,6 +42,7 @@ export const PROVINCE_TH = {
 
 export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 export const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+export const MAP_STYLE_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 export const INITIAL_VIEW_STATE = {
   longitude: 101.0,

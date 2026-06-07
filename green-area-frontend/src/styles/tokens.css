@@ -62,3 +62,33 @@
   --z-toast:   80;
   --z-tooltip: 90;
 }
+
+/* Dark theme — overrides the palette only; the rest of the system (spacing,
+   type, radii) is shared. Ink scale stays "0 = strongest, 8 = subtlest" so every
+   token keeps its role: low indices read as text, high indices as faint fills. */
+:root[data-theme="dark"] {
+  --ink-0: #f4f7f5;
+  --ink-1: #e2e7e3;
+  --ink-2: #b9c0bb;
+  --ink-3: #8b938d;
+  --ink-4: #69716b;
+  --ink-5: #4b524d;
+  --ink-6: #353b37;
+  --ink-7: #2a302c;
+  --ink-8: #232825;
+
+  --accent:        #35a866;
+  --accent-strong: #45bd77;
+  --accent-soft:   #18301f;
+
+  --warn:        #d9a441;
+  --warn-soft:   #2a2410;
+  --crit:        #e06a6a;
+  --crit-soft:   #2a1414;
+
+  --paper:    #0e1110;
+  --paper-2:  #141816;
+  --surface:  #181d1a;
+  --rule:     #2a302c;
+  --rule-2:   #3b423d;
+}
