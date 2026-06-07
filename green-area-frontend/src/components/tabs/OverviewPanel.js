@@ -4,6 +4,10 @@ import { buildRankingReport } from '../../utils/reportPdf';
 import ExportBar from '../ui/ExportBar';
 import { Note } from '../ui/Metric';
 
+// 77 — total Thai provinces. The ranking only covers provinces that already have
+// cached data, so we show coverage (X/77) to avoid implying it's the whole country.
+const TOTAL_PROVINCES = Object.keys(PROVINCE_TH).length;
+
 export default function OverviewPanel({ data, handlers }) {
   const {
     rankingData = [], rankingStats = null, rankingLoading = false, rankingYear,
@@ -51,23 +55,29 @@ export default function OverviewPanel({ data, handlers }) {
           <section className="section">
             <div className="section__head">
               <span className="section__title">สรุปปี {rankingYear}</span>
-              <span className="section__meta">{rankingStats.total} จังหวัด</span>
+              <span className="section__meta">{rankingStats.total} / {TOTAL_PROVINCES} จังหวัด</span>
             </div>
             <div className="kv-row">
               <div className="kv">
                 <div className="kv__label">ผ่าน WHO</div>
                 <div className="kv__value">{rankingStats.whoPass}</div>
-                <div className="kv__hint">{passPct}% ของทั้งหมด</div>
+                <div className="kv__hint">{passPct}% ของที่จัดอันดับ</div>
               </div>
               <div className="kv">
                 <div className="kv__label">ต่ำกว่า WHO</div>
                 <div className="kv__value">{rankingStats.whoFail}</div>
-                <div className="kv__hint">{100 - passPct}% ของทั้งหมด</div>
+                <div className="kv__hint">{100 - passPct}% ของที่จัดอันดับ</div>
               </div>
             </div>
             <div className="bar" style={{ marginTop: 4 }}>
               <div className="bar__fill" style={{ width: `${passPct}%` }} />
             </div>
+            {rankingStats.total < TOTAL_PROVINCES && (
+              <div className="helper" style={{ marginTop: 8 }}>
+                จัดอันดับจากจังหวัดที่มีข้อมูลแล้วเท่านั้น ({rankingStats.total}/{TOTAL_PROVINCES}) ·
+                คลิกจังหวัดบนแผนที่เพื่อเพิ่มข้อมูล
+              </div>
+            )}
           </section>
 
           {rankingData.length > 0 && (

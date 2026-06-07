@@ -36,9 +36,12 @@ input, select, textarea { font: inherit; color: inherit; }
 
 .App[data-sidebar="collapsed"] { grid-template-columns: 0 1fr; }
 
-.topbar { grid-area: header; position: relative; z-index: var(--z-header); }
-.side   { grid-area: side;   position: relative; z-index: var(--z-sidebar); overflow: hidden; }
-.canvas { grid-area: map;    position: relative; z-index: var(--z-map);     overflow: hidden; background: var(--paper-2); }
+/* min-width/height:0 lets the 1fr grid tracks shrink below their content's
+   intrinsic size — without it the deck.gl canvas forces the column wider than
+   the viewport on narrow screens (horizontal overflow). */
+.topbar { grid-area: header; position: relative; z-index: var(--z-header); min-width: 0; }
+.side   { grid-area: side;   position: relative; z-index: var(--z-sidebar); overflow: hidden; min-width: 0; min-height: 0; }
+.canvas { grid-area: map;    position: relative; z-index: var(--z-map);     overflow: hidden; min-width: 0; min-height: 0; background: var(--paper-2); }
 
 /* Responsive */
 @media (max-width: 900px) {
