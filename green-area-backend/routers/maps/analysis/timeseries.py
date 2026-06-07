@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 
 from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
+from stats_utils import mann_kendall
 
 router = APIRouter()
 
@@ -82,6 +83,15 @@ def get_timeseries(province_name: str,
         summary["lst_delta"] = round(last["lst_mean"] - first["lst_mean"], 2)
         summary["lst_first_year"] = first["year"]
         summary["lst_last_year"] = last["year"]
+
+    # Mann-Kendall — ทดสอบว่าแนวโน้มมีนัยสำคัญทางสถิติไหม (ต้องมี >= 3 ปี)
+    # เลี่ยงการ "เคลม" แนวโน้มจาก delta จุดแรก-จุดสุดท้ายเพียงอย่างเดียว
+    mk_ndvi = mann_kendall([s["ndvi_mean"] for s in valid_ndvi])
+    if mk_ndvi:
+        summary["ndvi_trend"] = mk_ndvi
+    mk_lst = mann_kendall([s["lst_mean"] for s in valid_lst])
+    if mk_lst:
+        summary["lst_trend"] = mk_lst
 
     return {
         "province": province_name,

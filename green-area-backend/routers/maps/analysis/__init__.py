@@ -3,10 +3,11 @@
 """
 from fastapi import APIRouter
 
-from . import districts, urban, timeseries, context
+from . import districts, urban, timeseries, context, cooling
 
 router = APIRouter()
 router.include_router(districts.router)
 router.include_router(urban.router)
 router.include_router(timeseries.router)
 router.include_router(context.router)
+router.include_router(cooling.router)

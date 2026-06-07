@@ -3,10 +3,12 @@ import StatsTab     from './tabs/StatsTab';
 import TrendTab     from './tabs/TrendTab';
 import CompareTab   from './tabs/CompareTab';
 import RecommendTab from './tabs/RecommendTab';
+import CoolingTab   from './tabs/CoolingTab';
 
 const TABS = [
   { id: 'stats',     label: 'ข้อมูล' },
   { id: 'trend',     label: 'แนวโน้ม' },
+  { id: 'cooling',   label: 'ความเย็น' },
   { id: 'compare',   label: 'เปรียบเทียบ' },
   { id: 'recommend', label: 'AI แนะนำ' },
 ];
@@ -64,6 +66,7 @@ export default function Sidebar({ data, handlers }) {
             <div className="panel__inner">
               {sidebarTab === 'stats'     && <StatsTab     data={data} handlers={handlers} />}
               {sidebarTab === 'trend'     && <TrendTab     data={data} handlers={handlers} />}
+              {sidebarTab === 'cooling'   && <CoolingTab   data={data} handlers={handlers} />}
               {sidebarTab === 'compare'   && <CompareTab   data={data} handlers={handlers} />}
               {sidebarTab === 'recommend' && <RecommendTab data={data} handlers={handlers} />}
             </div>
