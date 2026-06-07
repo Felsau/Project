@@ -11,14 +11,29 @@ const TOTAL_PROVINCES = Object.keys(PROVINCE_TH).length;
 export default function OverviewPanel({ data, handlers }) {
   const {
     rankingData = [], rankingStats = null, rankingLoading = false, rankingYear,
-    ndviCache,
+    ndviCache, provinceList = [],
+    computing = false, computeProgress = { done: 0, total: 0, failed: 0 },
   } = data;
-  const { onFetchRanking, setRankingYear } = handlers;
+  const {
+    onFetchRanking, setRankingYear, onComputeMissing, onCancelCompute,
+  } = handlers;
 
   const cacheCount = Object.keys(ndviCache || {}).length;
   const passPct = rankingStats?.total > 0
     ? Math.round((rankingStats.whoPass / rankingStats.total) * 100)
     : 0;
+
+  // Provinces with no data for this ranking year (to compute on demand).
+  const ranked = new Set(rankingData.map(r => r.province));
+  const missing = provinceList.filter(p => !ranked.has(p.en));
+  const coveragePct = rankingStats?.total != null
+    ? Math.round((rankingStats.total / TOTAL_PROVINCES) * 100)
+    : 0;
+
+  const runCompute = async () => {
+    await onComputeMissing(rankingYear, missing);
+    onFetchRanking(rankingYear);  // refresh ranking with the newly computed provinces
+  };
 
   return (
     <div id="export-ranking" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -72,10 +87,41 @@ export default function OverviewPanel({ data, handlers }) {
             <div className="bar" style={{ marginTop: 4 }}>
               <div className="bar__fill" style={{ width: `${passPct}%` }} />
             </div>
-            {rankingStats.total < TOTAL_PROVINCES && (
-              <div className="helper" style={{ marginTop: 8 }}>
-                จัดอันดับจากจังหวัดที่มีข้อมูลแล้วเท่านั้น ({rankingStats.total}/{TOTAL_PROVINCES}) ·
-                คลิกจังหวัดบนแผนที่เพื่อเพิ่มข้อมูล
+
+            {(rankingStats.total < TOTAL_PROVINCES || computing) && (
+              <div className="coverage">
+                <div className="coverage__head">
+                  <span className="helper">ความครอบคลุมข้อมูลปี {rankingYear}</span>
+                  <span className="coverage__count">{rankingStats.total} / {TOTAL_PROVINCES}</span>
+                </div>
+                <div className="bar">
+                  <div className="bar__fill" style={{ width: `${coveragePct}%` }} />
+                </div>
+                {computing ? (
+                  <div className="coverage__row">
+                    <span className="helper">
+                      กำลังคำนวณ {computeProgress.done}/{computeProgress.total}
+                      {computeProgress.failed > 0 && ` · ล้มเหลว ${computeProgress.failed}`}
+                    </span>
+                    <button className="btn btn--sm" onClick={onCancelCompute}>ยกเลิก</button>
+                  </div>
+                ) : (
+                  <div className="coverage__row">
+                    <span className="helper">ยังไม่มีข้อมูล {missing.length} จังหวัด</span>
+                    <button
+                      className="btn btn--sm btn--primary"
+                      onClick={runCompute}
+                      disabled={missing.length === 0}
+                    >
+                      คำนวณจังหวัดที่ยังไม่มี
+                    </button>
+                  </div>
+                )}
+                {computing && (
+                  <div className="helper helper--warn">
+                    คำนวณสด GEE · อาจใช้เวลาหลายนาที (ปล่อยทิ้งไว้ได้ · กดดูจังหวัดอื่นต่อได้)
+                  </div>
+                )}
               </div>
             )}
           </section>

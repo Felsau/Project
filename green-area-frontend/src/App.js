@@ -16,6 +16,7 @@ import { useRankingData }  from './hooks/useRankingData';
 import { useRecommendData } from './hooks/useRecommendData';
 import { useTimelapseData } from './hooks/useTimelapseData';
 import { useCoolingData } from './hooks/useCoolingData';
+import { useCoverageCompute } from './hooks/useCoverageCompute';
 import { buildMapLayers }  from './utils/mapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
@@ -41,6 +42,7 @@ function App() {
   const recommend = useRecommendData();
   const timelapse = useTimelapseData();
   const cooling = useCoolingData();
+  const coverage = useCoverageCompute({ setNdviCache });
 
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
 
@@ -198,6 +200,8 @@ function App() {
     coolingData:    cooling.coolingData,
     coolingLoading: cooling.coolingLoading,
     coolingYear:    cooling.coolingYear,
+    computing:        coverage.computing,
+    computeProgress:  coverage.computeProgress,
   };
 
   const sidebarHandlers = {
@@ -222,6 +226,8 @@ function App() {
     setRecommendWeights: recommend.setRecommendWeights,
     onFetchCooling:  cooling.fetchCooling,
     setCoolingYear:  cooling.setCoolingYear,
+    onComputeMissing: coverage.computeMissing,
+    onCancelCompute:  coverage.cancelCompute,
   };
 
   return (
