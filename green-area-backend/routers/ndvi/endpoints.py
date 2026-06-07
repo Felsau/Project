@@ -46,7 +46,7 @@ def get_district_ndvi_monthly(province_name: str, district_name: str, year: Year
         }).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
-    except Exception as e:
+    except Exception:
         logger.error("❌ Error district monthly [%s/%s/%d]", province_name, district_name, year, exc_info=True)
         raise internal_error()
 
@@ -101,7 +101,7 @@ def get_district_ndvi(province_name: str, district_name: str, year: YearParam = 
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.error("❌ Error district [%s/%s/%d]", province_name, district_name, year, exc_info=True)
         raise internal_error()
 
@@ -132,7 +132,8 @@ def get_ndvi_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
         }).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
-    except Exception as e:
+    except Exception:
+        logger.error("❌ Error monthly [%s/%d]", province_name, year, exc_info=True)
         raise internal_error()
 
 
@@ -142,6 +143,8 @@ def get_ndvi_compare(province_name: str,
                      years: str = ",".join(str(y) for y in range(CURRENT_YEAR - 3, CURRENT_YEAR + 1))):
     if province_name not in PROVINCE_GEOMETRIES:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    if len(years) > 2000:  # bound parse cost — กัน query string ยักษ์
+        raise HTTPException(status_code=400, detail="พารามิเตอร์ years ยาวเกินไป")
     year_list = sorted(set(int(y.strip()) for y in years.split(",") if y.strip().isdigit()))
     if not year_list:
         raise HTTPException(status_code=400, detail="years ต้องเป็นตัวเลขคั่นด้วย comma")
@@ -217,6 +220,6 @@ def get_ndvi(province_name: str, year: YearParam = CURRENT_YEAR):
         return {"province": province_name, "year": year, **full, "from_cache": False}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.error("❌ Error [%s/%d]", province_name, year, exc_info=True)
         raise internal_error()

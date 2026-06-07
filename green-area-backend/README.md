@@ -22,7 +22,7 @@ FastAPI + Google Earth Engine + Supabase cache
 | GET | `/analysis/ranking?year=2026` | อันดับจังหวัดตาม green/person (WHO) |
 | GET | `/compare?provinces=A,B&year=2026` | เปรียบเทียบหลายจังหวัด |
 | GET | `/cache` · `/cache/districts` | ดูสถานะ cache |
-| DELETE | `/cache` · `/cache/{province}` | ล้าง cache (ต้อง `Authorization: Bearer $ADMIN_TOKEN`) |
+| DELETE | `/cache` · `/cache/{province}` | ล้าง cache (ต้องมี header `X-Admin-Token: $ADMIN_TOKEN`) |
 
 API docs interactive: `http://localhost:8000/docs`
 
