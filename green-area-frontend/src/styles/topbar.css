@@ -85,6 +85,22 @@
 
 .topbar__sidebar-toggle:hover { background: var(--ink-8); color: var(--ink-1); }
 
+.topbar__icon-btn {
+  height: 100%;
+  width: 40px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--rule);
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.topbar__icon-btn:hover { background: var(--ink-8); color: var(--ink-1); }
+
 /* Mobile — layout stacks (map over sidebar), so the brand shouldn't be pinned
    to 360px. Drop the data-source badges and the sidebar toggle (a no-op once the
    sidebar is a stacked row, not a collapsible column) to keep the 40px bar tidy. */

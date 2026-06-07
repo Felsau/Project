@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { FlyToInterpolator } from '@deck.gl/core';
 import Map from 'react-map-gl/maplibre';
@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './App.css';
 
 import * as turf from '@turf/turf';
-import { MAP_STYLE, INITIAL_VIEW_STATE, PROVINCE_TH } from './constants';
+import { MAP_STYLE, MAP_STYLE_DARK, INITIAL_VIEW_STATE, PROVINCE_TH, CURRENT_YEAR } from './constants';
 import { useNdviCache }    from './hooks/useNdviCache';
 import { useProvinceData } from './hooks/useProvinceData';
 import { useDistrictData } from './hooks/useDistrictData';
@@ -21,6 +21,7 @@ import { buildMapLayers }  from './utils/mapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
 import MapTooltip from './components/MapTooltip';
+import MapLegend  from './components/MapLegend';
 import Toast      from './components/Toast';
 import TimelapsePlayer from './components/TimelapsePlayer';
 import { pushError } from './utils/toast';
@@ -32,6 +33,11 @@ function App() {
   const [tooltip, setTooltip]           = useState(null);
   const [sidebarTab, setSidebarTab]     = useState('stats');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    const saved = typeof localStorage !== 'undefined' && localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
 
   const { ndviCache, setNdviCache } = useNdviCache();
   const province = useProvinceData({ setNdviCache });
@@ -54,6 +60,15 @@ function App() {
     []
   );
 
+  // Apply + persist the colour theme on the root element.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+    try { localStorage.setItem('theme', theme); } catch { /* storage blocked — ignore */ }
+  }, [theme]);
+
+  const mapStyle = theme === 'dark' ? MAP_STYLE_DARK : MAP_STYLE;
+
   useEffect(() => {
     fetch('/thailand.json')
       .then(r => r.json())
@@ -63,6 +78,31 @@ function App() {
         pushError('โหลดขอบเขตจังหวัดไม่สำเร็จ — รีเฟรชหน้าเว็บใหม่');
       });
   }, []);
+
+  // Deep-link: restore province (?p=) and ranking year (?year=) from the URL once
+  // the map data is ready, then keep the URL in sync for shareable links.
+  const didInitFromUrl = useRef(false);
+  const [urlReady, setUrlReady] = useState(false);
+  useEffect(() => {
+    if (didInitFromUrl.current || !thailandData) return;
+    didInitFromUrl.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const year = Number(params.get('year'));
+    if (year && !Number.isNaN(year)) ranking.setRankingYear(year);
+    const p = params.get('p');
+    if (p && PROVINCE_TH[p]) selectProvince(p);
+    setUrlReady(true);  // only now may the writer below touch the URL
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thailandData]);
+
+  useEffect(() => {
+    if (!urlReady) return;  // don't clobber the incoming URL before it's restored
+    const params = new URLSearchParams();
+    if (province.selectedProvinceEN) params.set('p', province.selectedProvinceEN);
+    if (ranking.rankingYear !== CURRENT_YEAR) params.set('year', ranking.rankingYear);
+    const qs = params.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [urlReady, province.selectedProvinceEN, ranking.rankingYear]);
 
   // cooling analysis is province-scoped — clear it whenever the province changes.
   // Intentional single dep: resetCooling is stable; depending on `cooling` re-fires each render.
@@ -236,6 +276,8 @@ function App() {
         loading={loading}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed(c => !c)}
+        theme={theme}
+        onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
       />
 
       <aside className="side">
@@ -251,9 +293,10 @@ function App() {
           getCursor={getCursor}
           glOptions={{ preserveDrawingBuffer: true }}
         >
-          <Map mapStyle={MAP_STYLE} preserveDrawingBuffer={true} />
+          <Map mapStyle={mapStyle} preserveDrawingBuffer={true} />
         </DeckGL>
         {tooltip && <MapTooltip tooltip={tooltip} />}
+        <MapLegend />
 
         <div className="map-controls">
           <button
