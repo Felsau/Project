@@ -85,6 +85,15 @@
 
 .topbar__sidebar-toggle:hover { background: var(--ink-8); color: var(--ink-1); }
 
+/* Mobile — layout stacks (map over sidebar), so the brand shouldn't be pinned
+   to 360px. Drop the data-source badges and the sidebar toggle (a no-op once the
+   sidebar is a stacked row, not a collapsible column) to keep the 40px bar tidy. */
+@media (max-width: 900px) {
+  .topbar__brand { min-width: 0; flex: 1; }
+  .topbar__meta,
+  .topbar__sidebar-toggle { display: none; }
+}
+
 /* Loading line under topbar */
 .loading-bar {
   position: absolute;

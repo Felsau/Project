@@ -47,4 +47,14 @@ API docs interactive: `http://localhost:8000/docs`
 
 ## Tests
 
-ยังไม่มี backend test เป้าหมายที่ดี: `_is_stale`, `match_province`, WHO calculation
+มี test **72 ตัว** — รันด้วย `.venv/bin/pytest tests/ -v` (รันใน CI ทุก push/PR · ดู
+`../.github/workflows/ci.yml`)
+
+| ไฟล์ | ครอบคลุม |
+|---|---|
+| `tests/test_stats_utils.py` | `linregress` (slope/r) + Mann-Kendall trend significance |
+| `tests/test_pure_helpers.py` | `_is_stale` (cache invalidation), WHO status (9 m²/คน), normalize weights, validate geojson path, estimate impact (จำนวนต้นไม้ / cooling / CO₂ / รถยนต์ + สัมประสิทธิ์พันธุ์ไม้ไทย) |
+| `tests/test_endpoints.py` | API endpoints (`/`, `/compare`, `/cache`, `/analysis/ranking`, `/timelapse`, `/analysis/cooling`, DELETE `/cache`) ผ่าน FastAPI `TestClient` + mock `supa_call` |
+
+Pure helpers ทดสอบได้โดยไม่ต้องมี credential · endpoint tests mock ทุก call ไป
+Supabase/GEE จึงไม่แตะ external service จริง

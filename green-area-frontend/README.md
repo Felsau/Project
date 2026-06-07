@@ -42,7 +42,7 @@ src/
 
 ## Environment
 
-- `REACT_APP_API_BASE` (optional) — backend URL · default `http://localhost:8000`
+- `REACT_APP_API_URL` (optional) — backend URL · default `http://localhost:8000`
 
 ## Error handling
 
