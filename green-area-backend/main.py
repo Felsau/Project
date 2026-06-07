@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR,
-                          YearParam, YEAR_MIN, YEAR_MAX)
+                          YearParam, YEAR_MIN, YEAR_MAX, WHO_STANDARD_M2)
 from routers import ndvi, lst, recommend, maps
 from schemas import RankingResponse, TimelapseResponse
 
@@ -34,22 +34,43 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
     "ALLOWED_ORIGINS", "http://localhost:3000"
 ).split(",") if o.strip()]
 
-# Startup warnings — เตือนตอน boot ถ้า config ไม่ครบ ก่อนเจอปัญหา runtime
-if not os.getenv("ADMIN_TOKEN"):
-    logger.warning("⚠️  ADMIN_TOKEN ไม่ได้ตั้งใน .env — DELETE /cache จะถูก reject ทุก request")
-if ALLOWED_ORIGINS == ["http://localhost:3000"]:
+# Production = ALLOWED_ORIGINS ถูกตั้งเป็น URL จริง (ไม่ใช่ localhost default)
+IS_PRODUCTION = ALLOWED_ORIGINS != ["http://localhost:3000"]
+_DEFAULT_ADMIN_TOKEN = "change-me-to-a-random-secret"  # ค่าตัวอย่างใน .env.example
+
+# Startup config checks — fail fast ใน production ถ้า security config อ่อน
+# (dev = แค่ warn เพื่อไม่ขวางการพัฒนา)
+_admin_token = os.getenv("ADMIN_TOKEN")
+if not _admin_token:
+    _msg = "ADMIN_TOKEN ไม่ได้ตั้ง — DELETE /cache จะถูก reject ทุก request"
+    if IS_PRODUCTION:
+        raise RuntimeError(f"❌ {_msg} · production ต้องตั้ง ADMIN_TOKEN เป็น secret สุ่มยาว ≥ 16 ตัว")
+    logger.warning("⚠️  %s", _msg)
+elif _admin_token == _DEFAULT_ADMIN_TOKEN or len(_admin_token) < 16:
+    _msg = "ADMIN_TOKEN เป็นค่า default หรือสั้นเกินไป (< 16 ตัว) — เดา/brute-force ได้ง่าย"
+    if IS_PRODUCTION:
+        raise RuntimeError(f"❌ {_msg} · ตั้งใหม่เป็น secret สุ่มยาว")
+    logger.warning("⚠️  %s", _msg)
+
+if not IS_PRODUCTION:
     logger.warning("⚠️  ALLOWED_ORIGINS = localhost · production ต้องเปลี่ยนเป็น URL ของ frontend")
 
 app = FastAPI()
+# CORS — จำกัดเฉพาะ method/header ที่ API ใช้จริง (least privilege)
+# ไม่เปิด allow_credentials เพราะ API ใช้ token header ไม่ใช่ cookie
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "DELETE", "OPTIONS"],
+    allow_headers=["X-Admin-Token", "Content-Type"],
 )
 
 # Rate limit แบบ global ต่อ IP — กันใช้ผิดประเภท + GEE quota หมด
 # default 60 req/min ครอบคลุมทุก endpoint · override ผ่าน env RATE_LIMIT
+#
+# ⚠️  หลัง reverse proxy (Render/Railway) ต้องรัน uvicorn ด้วย
+#     --proxy-headers --forwarded-allow-ips='*' ไม่งั้น get_remote_address จะเห็น
+#     IP ของ proxy → ทุกคนใช้ rate-limit bucket เดียวกัน (ดู Procfile / README)
 _rate_limit = os.getenv("RATE_LIMIT", "60/minute")
 limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])
 app.state.limiter = limiter
@@ -82,11 +103,18 @@ def read_root():
     }
 
 
+# จำกัดจำนวนจังหวัดต่อ 1 request — กัน abuse ที่ส่ง list ยาวไป build query ใหญ่
+MAX_COMPARE_PROVINCES = 50
+
+
 @app.get("/compare")
 def compare_provinces(provinces: str, year: YearParam = CURRENT_YEAR):
     province_list = [p.strip() for p in provinces.split(",") if p.strip()]
     if not province_list:
         raise HTTPException(status_code=400, detail="ต้องระบุจังหวัดอย่างน้อย 1 จังหวัด")
+    if len(province_list) > MAX_COMPARE_PROVINCES:
+        raise HTTPException(status_code=400,
+            detail=f"เปรียบเทียบได้สูงสุด {MAX_COMPARE_PROVINCES} จังหวัดต่อครั้ง")
     missing = [p for p in province_list if p not in PROVINCE_GEOMETRIES]
     if missing:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด: {', '.join(missing)}")
@@ -134,17 +162,21 @@ CACHE_TABLES = (
 
 
 @app.delete("/cache", dependencies=[Depends(require_admin)])
-def clear_cache():
+def clear_cache(request: Request):
+    client = request.client.host if request.client else "unknown"
+    logger.warning("🗑️  ADMIN cache clear (ALL %d tables) จาก %s", len(CACHE_TABLES), client)
     for table in CACHE_TABLES:
         supa_call(lambda s, t=table: s.table(t).delete().neq("id", 0).execute())
     return {"message": "✅ Cache cleared", "tables": list(CACHE_TABLES)}
 
 
 @app.delete("/cache/{province_name}", dependencies=[Depends(require_admin)])
-def clear_province_cache(province_name: str):
+def clear_province_cache(province_name: str, request: Request):
     # Whitelist check — กัน admin พิมพ์ผิดแล้วลบ 0 row เงียบๆ
     if province_name not in PROVINCE_GEOMETRIES:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    client = request.client.host if request.client else "unknown"
+    logger.warning("🗑️  ADMIN cache clear (%s) จาก %s", province_name, client)
     for table in CACHE_TABLES:
         supa_call(lambda s, t=table: s.table(t).delete().eq("province", province_name).execute())
     return {"message": f"✅ Cache cleared for {province_name}"}
@@ -194,9 +226,9 @@ def get_ranking(year: YearParam = CURRENT_YEAR):
     for i, row in enumerate(ranked):
         row["rank"] = i + 1
         current = row["green_area_m2_per_person"]
-        row["deficit_m2_per_person"] = round(max(0, 9 - current), 2)
+        row["deficit_m2_per_person"] = round(max(0, WHO_STANDARD_M2 - current), 2)
         pop = row.get("population") or 0
-        row["deficit_km2"] = round(max(0, 9 - current) * pop / 1_000_000, 2) if pop else 0
+        row["deficit_km2"] = round(max(0, WHO_STANDARD_M2 - current) * pop / 1_000_000, 2) if pop else 0
     who_pass = sum(1 for r in rankable if r.get("who_status") and "ผ่าน" in r.get("who_status", ""))
     who_fail = sum(1 for r in rankable if r.get("who_status") and "ต่ำกว่า" in r.get("who_status", ""))
     return {
