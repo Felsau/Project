@@ -14,6 +14,7 @@ import { useCompareData }  from './hooks/useCompareData';
 import { useRankingData }  from './hooks/useRankingData';
 import { useRecommendData } from './hooks/useRecommendData';
 import { useTimelapseData } from './hooks/useTimelapseData';
+import { useCoolingData } from './hooks/useCoolingData';
 import { buildMapLayers }  from './utils/mapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
@@ -38,6 +39,7 @@ function App() {
   const ranking  = useRankingData();
   const recommend = useRecommendData();
   const timelapse = useTimelapseData();
+  const cooling = useCoolingData();
 
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
 
@@ -51,6 +53,11 @@ function App() {
       });
   }, []);
 
+  // cooling analysis is province-scoped — clear it whenever the province changes.
+  // Intentional single dep: resetCooling is stable; depending on `cooling` re-fires each render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { cooling.resetCooling(); }, [province.selectedProvinceEN]);
+
   const showingDistricts = !!(province.selectedProvinceEN && district.districtsData);
 
   const handleReset = useCallback(() => {
@@ -59,12 +66,15 @@ function App() {
     trend.resetTrend();
     compare.resetCompare();
     recommend.resetRecommend();
+    cooling.resetCooling();
     setSidebarTab('stats');
     setViewState({
       ...INITIAL_VIEW_STATE,
       transitionDuration: 800,
       transitionInterpolator: new FlyToInterpolator(),
     });
+    // Intentional partial deps — reset fns are stable; objects would re-fire each render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [province.resetProvince, district.resetDistrict, trend.resetTrend,
       compare.resetCompare, recommend.resetRecommend]);
 
@@ -94,6 +104,8 @@ function App() {
     zoom: viewState.zoom,
     recommendData:    recommend.recommendData,
     recommendVisible: recommend.recommendVisible,
+    // Intentional partial deps — only re-layer on data/selection/zoom changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     thailandData, effectiveNdviCache,
     province.selectedProvinceEN,
@@ -145,6 +157,9 @@ function App() {
     recommendScope:   recommend.recommendScope,
     recommendYear:    recommend.recommendYear,
     recommendWeights: recommend.recommendWeights,
+    coolingData:    cooling.coolingData,
+    coolingLoading: cooling.coolingLoading,
+    coolingYear:    cooling.coolingYear,
   };
 
   const sidebarHandlers = {
@@ -166,6 +181,8 @@ function App() {
     onClearRecommend:    recommend.resetRecommend,
     setRecommendYear:    recommend.setRecommendYear,
     setRecommendWeights: recommend.setRecommendWeights,
+    onFetchCooling:  cooling.fetchCooling,
+    setCoolingYear:  cooling.setCoolingYear,
   };
 
   return (
