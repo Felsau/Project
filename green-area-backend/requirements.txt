@@ -1,13 +1,15 @@
-fastapi>=0.110.0
-uvicorn[standard]>=0.27.0
-supabase>=2.3.0
-python-dotenv>=1.0.0
-earthengine-api>=0.1.390
-httpx>=0.27.0
-matplotlib>=3.8.0
-Pillow>=10.0.0
-requests>=2.31.0
-slowapi>=0.1.9
+# Pinned for reproducible, tamper-resistant deploys (matches the working venv).
+# A full lockfile (pip-tools / uv) that also pins transitive deps is the next step.
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+supabase==2.31.0
+python-dotenv==1.2.2
+earthengine-api==1.7.29
+httpx==0.28.1
+matplotlib==3.10.9
+Pillow==12.2.0
+requests==2.34.2
+slowapi==0.1.9
 
 # Dev/test only
-pytest>=8.0.0
+pytest==9.0.3
