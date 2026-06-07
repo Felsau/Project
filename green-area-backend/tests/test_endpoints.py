@@ -46,6 +46,14 @@ class TestCompare:
         assert r.status_code == 400
         assert "อย่างน้อย" in r.json()["detail"]
 
+    def test_too_many_provinces_returns_400(self, client):
+        # input cap — กัน abuse ที่ส่ง list ยาว (เช็คก่อน whitelist → 400 ไม่ใช่ 404)
+        c, _ = client
+        many = ",".join(f"P{i}" for i in range(60))
+        r = c.get(f"/compare?provinces={many}")
+        assert r.status_code == 400
+        assert "สูงสุด" in r.json()["detail"]
+
     def test_unknown_province_returns_404(self, client):
         c, _ = client
         r = c.get("/compare?provinces=NotAProvince")
@@ -276,3 +284,80 @@ class TestTimelapse:
         assert d["years"] == []
         assert d["province_count"] == 0
         assert d["data"] == {}
+
+
+# ── GET /analysis/cooling/{province} ─────────────────────────────────────────
+class TestCooling:
+    def test_unknown_province_returns_404(self, client):
+        c, _ = client
+        r = c.get("/analysis/cooling/NotAProvince")
+        assert r.status_code == 404
+        assert "NotAProvince" in r.json()["detail"]
+
+    def test_negative_slope_detected_as_cooling(self, client, monkeypatch):
+        """อำเภอเขียวกว่า (NDVI สูง) เย็นกว่า (LST ต่ำ) → slope ติดลบ"""
+        c, _ = client
+        from dependencies import PROVINCE_GEOMETRIES
+        sample = next(iter(PROVINCE_GEOMETRIES))
+
+        # endpoint เรียก supa_call 2 ครั้ง: ครั้งแรก NDVI, ครั้งสอง LST
+        state = {"n": 0}
+
+        def fake_supa(fn, **kw):
+            state["n"] += 1
+            if state["n"] == 1:
+                return _fake_response([
+                    {"district": "A", "ndvi_mean": 0.6},
+                    {"district": "B", "ndvi_mean": 0.2},
+                ])
+            return _fake_response([
+                {"district": "A", "lst_mean": 28.0},
+                {"district": "B", "lst_mean": 34.0},
+            ])
+        monkeypatch.setattr("routers.maps.analysis.cooling.supa_call", fake_supa)
+
+        r = c.get(f"/analysis/cooling/{sample}")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["n_districts"] == 2
+        assert d["regression"]["slope"] < 0          # cooling gradient
+        assert d["regression"]["n"] == 2
+        assert "เชิงลบ" in d["interpretation"]
+
+    def test_pairs_only_districts_present_in_both_tables(self, client, monkeypatch):
+        c, _ = client
+        from dependencies import PROVINCE_GEOMETRIES
+        sample = next(iter(PROVINCE_GEOMETRIES))
+        state = {"n": 0}
+
+        def fake_supa(fn, **kw):
+            state["n"] += 1
+            if state["n"] == 1:
+                return _fake_response([
+                    {"district": "A", "ndvi_mean": 0.6},
+                    {"district": "B", "ndvi_mean": 0.2},
+                    {"district": "C", "ndvi_mean": 0.4},   # ไม่มี LST → ตัดทิ้ง
+                ])
+            return _fake_response([
+                {"district": "A", "lst_mean": 28.0},
+                {"district": "B", "lst_mean": 34.0},
+            ])
+        monkeypatch.setattr("routers.maps.analysis.cooling.supa_call", fake_supa)
+
+        r = c.get(f"/analysis/cooling/{sample}")
+        assert r.status_code == 200
+        assert r.json()["n_districts"] == 2
+
+    def test_insufficient_data_returns_null_regression(self, client, monkeypatch):
+        c, _ = client
+        from dependencies import PROVINCE_GEOMETRIES
+        sample = next(iter(PROVINCE_GEOMETRIES))
+        monkeypatch.setattr("routers.maps.analysis.cooling.supa_call",
+                            lambda fn, **kw: _fake_response([]))
+
+        r = c.get(f"/analysis/cooling/{sample}")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["n_districts"] == 0
+        assert d["regression"] is None
+        assert "ข้อมูลไม่พอ" in d["interpretation"]
