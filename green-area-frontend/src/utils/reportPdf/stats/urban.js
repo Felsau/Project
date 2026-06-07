@@ -1,6 +1,7 @@
 // Urban Subset (Phase B-3) — WHO-comparable green-per-person ในเขต Built-up.
 import { fmt, fmtInt } from '../helpers';
 import { COLOR, sectionTitle, table, calloutBox, note } from '../components';
+import { WHO_STANDARD_M2 } from '../../../constants';
 
 export const urbanSections = (ctx) => {
   const { urbanResp, ndviStats } = ctx;
@@ -35,7 +36,7 @@ export const urbanSections = (ctx) => {
      'จาก WorldPop ' + u.worldpop_year + ' (mask ด้วย Built-up)'],
     ['พื้นที่สีเขียว/คน (Urban)',
      u.m2_per_person_urban != null ? `${fmt(u.m2_per_person_urban, 2)} m²` : '—',
-     u.who_urban_pass ? '✅ ผ่าน WHO 9 m²/คน' : '⚠️ ต่ำกว่า WHO 9 m²/คน'],
+     u.who_urban_pass ? `✅ ผ่าน WHO ${WHO_STANDARD_M2} m²/คน` : `⚠️ ต่ำกว่า WHO ${WHO_STANDARD_M2} m²/คน`],
   ];
   uHtml += table(
     ['ตัวชี้วัด', 'ค่า', 'การตีความ'],
@@ -49,9 +50,9 @@ export const urbanSections = (ctx) => {
     const urbanVal = u.m2_per_person_urban;
     const ratio = provVal > 0 ? (urbanVal / provVal) : 0;
     const interpretation = u.who_urban_pass
-      ? `<b>ผ่าน WHO 9 m²/คน ในเขตเมืองจริง</b> — มีพื้นที่สวนสาธารณะ/ต้นไม้ริมถนนในชุมชนเพียงพอตามมาตรฐาน`
-      : `<b>ต่ำกว่า WHO 9 m²/คน ในเขตเมืองจริง</b> — ขาดแคลน <b>${(9 - urbanVal).toFixed(1)} m²/คน</b> · ` +
-        `เพื่อผ่านเกณฑ์ ต้องเพิ่ม ~<b>${((9 - urbanVal) * u.population_urban / 1_000_000).toFixed(2)} km²</b> ของพื้นที่สีเขียวในเขตเมือง`;
+      ? `<b>ผ่าน WHO ${WHO_STANDARD_M2} m²/คน ในเขตเมืองจริง</b> — มีพื้นที่สวนสาธารณะ/ต้นไม้ริมถนนในชุมชนเพียงพอตามมาตรฐาน`
+      : `<b>ต่ำกว่า WHO ${WHO_STANDARD_M2} m²/คน ในเขตเมืองจริง</b> — ขาดแคลน <b>${(WHO_STANDARD_M2 - urbanVal).toFixed(1)} m²/คน</b> · ` +
+        `เพื่อผ่านเกณฑ์ ต้องเพิ่ม ~<b>${((WHO_STANDARD_M2 - urbanVal) * u.population_urban / 1_000_000).toFixed(2)} km²</b> ของพื้นที่สีเขียวในเขตเมือง`;
     uHtml += calloutBox(
       `<b>เปรียบเทียบ:</b><br/>` +
       `• ระดับจังหวัด (รวมป่า+เกษตร): <b>${fmt(provVal, 2)} m²/คน</b><br/>` +

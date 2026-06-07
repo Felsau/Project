@@ -53,3 +53,7 @@ export const INITIAL_VIEW_STATE = {
 
 export const CURRENT_YEAR = new Date().getFullYear();
 export const AVAILABLE_YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - 5 + i);
+
+// WHO urban green-space standard (m² per person) — single source of truth for
+// deficit math + report copy. Mirrors WHO_STANDARD_M2 in the backend.
+export const WHO_STANDARD_M2 = 9;

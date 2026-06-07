@@ -27,5 +27,5 @@ test('renders app header', async () => {
 
 test('shows overview panel when nothing selected', async () => {
   render(<App />);
-  expect(await screen.findByText('ภาพรวมพื้นที่สีเขียว')).toBeInTheDocument();
+  expect(await screen.findByText('โหลดอันดับรายปี')).toBeInTheDocument();
 });
