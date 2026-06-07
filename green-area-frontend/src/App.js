@@ -5,7 +5,8 @@ import Map from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './App.css';
 
-import { MAP_STYLE, INITIAL_VIEW_STATE } from './constants';
+import * as turf from '@turf/turf';
+import { MAP_STYLE, INITIAL_VIEW_STATE, PROVINCE_TH } from './constants';
 import { useNdviCache }    from './hooks/useNdviCache';
 import { useProvinceData } from './hooks/useProvinceData';
 import { useDistrictData } from './hooks/useDistrictData';
@@ -42,6 +43,14 @@ function App() {
   const cooling = useCoolingData();
 
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
+
+  // Province list for the search/select box — Thai + English, sorted by Thai name.
+  const provinceList = useMemo(
+    () => Object.entries(PROVINCE_TH)
+      .map(([en, th]) => ({ en, th }))
+      .sort((a, b) => a.th.localeCompare(b.th, 'th')),
+    []
+  );
 
   useEffect(() => {
     fetch('/thailand.json')
@@ -81,6 +90,33 @@ function App() {
   const handleViewStateChange = useCallback(({ viewState: vs }) => setViewState(vs), []);
   const getCursor = useCallback(({ isHovering }) => (isHovering ? 'pointer' : 'default'), []);
 
+  // Select a province programmatically (from the search box) — mirrors the map
+  // click handler so both entry points fly to, fetch, and open the same province.
+  const selectProvince = useCallback((nameEN) => {
+    if (!thailandData) return;
+    const feature = thailandData.features.find(f => f.properties.name === nameEN);
+    if (!feature) return;
+    province.setSelectedProvince(PROVINCE_TH[nameEN] || nameEN);
+    province.setSelectedProvinceEN(nameEN);
+    province.setProvinceArea((turf.area(feature) / 1_000_000).toFixed(2));
+    district.resetDistrict();
+    trend.resetTrend();
+    province.fetchNDVI(nameEN);
+    district.ensureDistrictsLoaded();
+    district.loadDistrictCache(nameEN);
+    const [minLng, minLat, maxLng, maxLat] = turf.bbox(feature);
+    const maxSpan = Math.max(maxLng - minLng, maxLat - minLat);
+    const zoom = Math.min(10, Math.max(6, Math.log2(4 / maxSpan) + 7));
+    setViewState({
+      longitude: (minLng + maxLng) / 2, latitude: (minLat + maxLat) / 2,
+      zoom, pitch: 40, bearing: 0,
+      transitionDuration: 800, transitionInterpolator: new FlyToInterpolator(),
+    });
+    // Intentional partial deps — hook fns are stable (setters + refs); listing the
+    // hook objects would re-create this each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thailandData]);
+
   const layers = useMemo(() => buildMapLayers({
     thailandData, ndviCache: effectiveNdviCache,
     selectedProvinceEN:    province.selectedProvinceEN,
@@ -95,6 +131,7 @@ function App() {
     setSelectedDistrictEN: district.setSelectedDistrictEN,
     setDistrictArea:       district.setDistrictArea,
     fetchDistrictNDVI:     district.fetchDistrictNDVI,
+    selectProvince,
     ensureDistrictsLoaded: district.ensureDistrictsLoaded,
     loadDistrictCache:     district.loadDistrictCache,
     resetDistrict:         district.resetDistrict,
@@ -116,6 +153,7 @@ function App() {
   ]);
 
   const sidebarData = {
+    provinceList,
     selectedProvince:     province.selectedProvince,
     selectedProvinceEN:   province.selectedProvinceEN,
     selectedDistrict:     district.selectedDistrict,    // Thai — for display
@@ -164,6 +202,7 @@ function App() {
 
   const sidebarHandlers = {
     onReset:            handleReset,
+    onSelectProvince:   selectProvince,
     onClearDistrict:    district.resetDistrict,
     setSidebarTab,
     onToggleTrendYear:  trend.toggleTrendYear,
