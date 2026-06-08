@@ -20,7 +20,14 @@ export const triggerDownload = (blob, filename) => {
 
 const csvCell = (v) => {
   if (v == null) return '';
-  const s = String(v);
+  if (typeof v === 'number') return String(v);  // numbers are never formulas
+  let s = String(v);
+  // CSV formula-injection guard: spreadsheet apps execute cells starting with
+  // = + - @ (or tab/CR). Prefix ' so they're read as text — but skip
+  // numeric-looking strings (e.g. "-1.5") so real data isn't corrupted.
+  if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) {
+    s = `'${s}`;
+  }
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
