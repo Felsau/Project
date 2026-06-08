@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR,
-                          YearParam, YEAR_MIN, YEAR_MAX, WHO_STANDARD_M2)
+                          YearParam, WHO_STANDARD_M2)
 from routers import ndvi, lst, recommend, maps
 from schemas import RankingResponse, TimelapseResponse
 
@@ -90,6 +90,13 @@ app.include_router(ndvi.router)
 app.include_router(lst.router)
 app.include_router(recommend.router)
 app.include_router(maps.router)
+
+
+@app.get("/health")
+def health():
+    """Liveness probe น้ำหนักเบา — ไม่แตะ DB/GEE เหมาะกับ load-balancer healthcheck
+    (ใช้ตัวนี้แทน / ที่ query Supabase 2 ครั้งทุกการเรียก)"""
+    return {"ok": True}
 
 
 @app.get("/")
@@ -157,6 +164,7 @@ CACHE_TABLES = (
     "province_lst_annual", "province_lst_monthly",
     "district_ndvi_annual", "district_ndvi_monthly",
     "district_lst_annual", "district_lst_monthly",
+    "urban_ndvi_annual",
     "planting_recommendations",
 )
 

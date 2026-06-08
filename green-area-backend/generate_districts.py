@@ -82,7 +82,7 @@ OUTPUT_PATH = os.path.join(
 def try_gadm_direct() -> bool:
     """Download Thailand GADM 4.1 level-2 GeoJSON from gadm.org."""
     url = "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_THA_2.json"
-    print(f"⏳ Downloading GADM 4.1 directly from geodata.ucdavis.edu ...")
+    print("⏳ Downloading GADM 4.1 directly from geodata.ucdavis.edu ...")
     try:
         r = requests.get(url, timeout=60, stream=True)
         r.raise_for_status()

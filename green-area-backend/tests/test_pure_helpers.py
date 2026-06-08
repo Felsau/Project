@@ -2,7 +2,6 @@
 รัน: cd green-area-backend && pytest tests/ -v
 """
 import os
-import tempfile
 
 import pytest
 

@@ -1,0 +1,11 @@
+# Backend lint config (ruff). Run locally with: ruff check .
+# CI runs the same on every push/PR (see ../.github/workflows/ci.yml).
+# Rule selection = ruff defaults (pyflakes F + a subset of pycodestyle E).
+extend-exclude = [".venv", "data"]
+
+[lint.per-file-ignores]
+# main.py configures logging *before* importing routers on purpose, so module
+# imports legitimately sit below executable code (E402).
+"main.py" = ["E402"]
+# tests destructure weight triples as `n, l, p` (ndvi/lst/pop) — `l` is fine here (E741).
+"tests/*" = ["E741"]

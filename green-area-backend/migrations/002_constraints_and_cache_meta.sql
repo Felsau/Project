@@ -4,7 +4,7 @@
 -- สิ่งที่ทำ:
 --   1. เพิ่ม CHECK constraints บน year/NDVI/LST/percent ตาม domain ของข้อมูล
 --      (ป้องกัน insert ค่าผิด — ตอนนี้ backend validate อยู่แล้ว แต่ DB เป็นแนวสุดท้าย)
---   2. เพิ่ม cache_version (default 2) สำหรับ NDVI tables — ใช้แทน heuristic _is_stale
+--   2. เพิ่ม cache_version (default 1 = ตรงกับ CURRENT_CACHE_VERSION) สำหรับ NDVI tables — ใช้แทน heuristic _is_stale
 --      backend อนาคตจะอัปเดต stale logic ให้ตรวจ version แทน
 --   3. เพิ่ม expires_at บน tile-URL cache (planting_recommendations)
 --      — tile URL ใช้ session token GEE ที่หมดอายุภายในไม่กี่ชั่วโมง

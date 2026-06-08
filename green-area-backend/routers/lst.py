@@ -84,7 +84,7 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: YearP
             "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "district": district_name,
                 "year": year, "monthly": results, "from_cache": False}
-    except Exception as e:
+    except Exception:
         logger.error("❌ District LST monthly error", exc_info=True)
         raise internal_error()
 
@@ -124,7 +124,7 @@ def get_district_lst(province_name: str, district_name: str, year: YearParam = C
                 "from_cache": False}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.error("❌ District LST error", exc_info=True)
         raise internal_error()
 
@@ -151,7 +151,7 @@ def get_lst_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
              "cache_version": CURRENT_CACHE_VERSION}).execute())
         return {"province": province_name, "year": year,
                 "monthly": results, "from_cache": False}
-    except Exception as e:
+    except Exception:
         logger.error("❌ LST monthly error", exc_info=True)
         raise internal_error()
 
@@ -190,6 +190,6 @@ def get_lst(province_name: str, year: YearParam = CURRENT_YEAR):
                 "from_cache": False}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.error("❌ LST error [%s/%d]", province_name, year, exc_info=True)
         raise internal_error()
