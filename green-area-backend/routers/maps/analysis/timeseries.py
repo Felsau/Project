@@ -53,20 +53,20 @@ def get_timeseries(province_name: str,
 
     series = []
     for y in year_range:
-        n, l = n_by_y.get(y), l_by_y.get(y)
-        if not n and not l:
+        nrow, lrow = n_by_y.get(y), l_by_y.get(y)
+        if not nrow and not lrow:
             continue
         series.append({
             "year": y,
-            "ndvi_mean": n.get("ndvi_mean") if n else None,
-            "ndvi_min": n.get("ndvi_min") if n else None,
-            "ndvi_max": n.get("ndvi_max") if n else None,
-            "green_area_pct": n.get("green_area_pct") if n else None,
-            "green_area_km2": n.get("green_area_km2") if n else None,
-            "green_area_m2_per_person": n.get("green_area_m2_per_person") if n else None,
-            "lst_mean": l.get("lst_mean") if l else None,
-            "lst_min": l.get("lst_min") if l else None,
-            "lst_max": l.get("lst_max") if l else None,
+            "ndvi_mean": nrow.get("ndvi_mean") if nrow else None,
+            "ndvi_min": nrow.get("ndvi_min") if nrow else None,
+            "ndvi_max": nrow.get("ndvi_max") if nrow else None,
+            "green_area_pct": nrow.get("green_area_pct") if nrow else None,
+            "green_area_km2": nrow.get("green_area_km2") if nrow else None,
+            "green_area_m2_per_person": nrow.get("green_area_m2_per_person") if nrow else None,
+            "lst_mean": lrow.get("lst_mean") if lrow else None,
+            "lst_min": lrow.get("lst_min") if lrow else None,
+            "lst_max": lrow.get("lst_max") if lrow else None,
         })
 
     # คำนวณ delta สรุป (จุดแรก → จุดสุดท้าย) ถ้ามีข้อมูลครบทั้งสองข้าง

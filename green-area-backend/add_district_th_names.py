@@ -275,7 +275,7 @@ def main():
     print(f"      manual={matched_manual}  strict={matched_strict}  loose={matched_loose}  global={matched_global}  unmatched={len(unmatched)}")
     print(f"      File: {geojson_path}")
     if unmatched:
-        print(f"\nUnmatched (kept English):")
+        print("\nUnmatched (kept English):")
         for u in unmatched:
             print(f"   - {u}")
 

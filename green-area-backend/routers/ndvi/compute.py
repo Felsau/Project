@@ -89,21 +89,18 @@ def _compute_ndvi_annual(geom: ee.Geometry, year: int, scale: int):
     green_mask = ndvi_raw.gt(0.3)
     dense_mask = ndvi_raw.gt(0.5)
 
+    # total/green/dense area รวมเป็น 3 band แล้ว reduceRegion รอบเดียว — ลด GEE
+    # round-trip จาก 3 ครั้งเหลือ 1 (pattern เดียวกับ urban.py)
     pixel_area = ee.Image.pixelArea().clip(geom)
-    reducer = ee.Reducer.sum()
-
-    total_area_m2 = (pixel_area
-                     .reduceRegion(reducer=reducer, geometry=geom,
-                                   scale=scale, maxPixels=1e10, bestEffort=True)
-                     .get('area').getInfo())
-    green_area_m2 = (pixel_area.updateMask(green_mask)
-                     .reduceRegion(reducer=reducer, geometry=geom,
-                                   scale=scale, maxPixels=1e10, bestEffort=True)
-                     .get('area').getInfo())
-    dense_area_m2 = (pixel_area.updateMask(dense_mask)
-                     .reduceRegion(reducer=reducer, geometry=geom,
-                                   scale=scale, maxPixels=1e10, bestEffort=True)
-                     .get('area').getInfo())
+    area_stack = (pixel_area.rename('total_area')
+                  .addBands(pixel_area.updateMask(green_mask).rename('green_area'))
+                  .addBands(pixel_area.updateMask(dense_mask).rename('dense_area')))
+    area_sums = area_stack.reduceRegion(
+        reducer=ee.Reducer.sum(), geometry=geom,
+        scale=scale, maxPixels=1e10, bestEffort=True, tileScale=4).getInfo()
+    total_area_m2 = area_sums.get('total_area')
+    green_area_m2 = area_sums.get('green_area')
+    dense_area_m2 = area_sums.get('dense_area')
 
     total_area_km2 = round((total_area_m2 or 0) / 1_000_000, 2)
     green_area_km2 = round((green_area_m2 or 0) / 1_000_000, 2)

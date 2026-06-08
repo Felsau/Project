@@ -62,9 +62,15 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
             return q.execute()
         cached = supa_call(_cache_q)
         if cached.data:
-            logger.info("✅ Urban cache hit: %s/%d", scope, year)
             row = cached.data[0]
-            return {**row, "from_cache": True}
+            if row.get("cache_version", 1) >= CURRENT_CACHE_VERSION:
+                logger.info("✅ Urban cache hit: %s/%d", scope, year)
+                return {**row, "from_cache": True}
+            # row เก่ากว่า compute version ปัจจุบัน → ลบทิ้งแล้วคำนวณใหม่
+            # (ลบก่อน ไม่งั้น insert รอบใหม่ชน UNIQUE(province,district,year))
+            logger.info("♻️ Urban stale cache: %s/%d — recomputing", scope, year)
+            supa_call(lambda s: s.table("urban_ndvi_annual")
+                      .delete().eq("id", row["id"]).execute())
     except Exception as e:
         logger.warning("⚠️ Urban cache lookup skipped (non-fatal): %s", e)
 

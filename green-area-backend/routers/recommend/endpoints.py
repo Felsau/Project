@@ -101,9 +101,12 @@ def _run_recommendation(province_name: str, district_name: str | None,
         if is_default:
             store_tile_url(province_name, district_name, year, tile_url)
             try:
+                # ไม่เก็บ tile_url ลง DB — URL ผูก GEE session ที่หมดอายุใน ~ชั่วโมง
+                # (ดู get_heatmap_url docstring) · cache-hit อ่านจาก in-process TTL
+                # cache แล้ว refresh ใหม่ทุกครั้งที่ serve แทน
                 supa_call(lambda s: s.table("planting_recommendations").insert({
                     "province": province_name, "district": district_name, "year": year,
-                    "tile_url": tile_url, "top_locations": top, "impact": impact,
+                    "top_locations": top, "impact": impact,
                 }).execute())
             except Exception as cache_err:
                 logger.warning("⚠️  Cache insert failed (non-fatal): %s", cache_err)

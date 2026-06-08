@@ -41,9 +41,9 @@ API docs interactive: `http://localhost:8000/docs`
 
 - ทุก endpoint ที่ trigger GEE compute ราคาแพง → check cache ก่อน
 - Cache key = `(province, district?, year)` — district nullable
-- Stale check ใน `ndvi.py::_is_stale` — invalidate row ที่คำนวณก่อนยุค water mask
+- Stale check ใน `routers/ndvi/compute.py::_is_stale` — invalidate row ที่คำนวณก่อนยุค water mask
 - AI Recommend tile URL หมดอายุพร้อม GEE session — มี in-process TTL cache 30 นาที
-  (`recommend.py::_TILE_URL_CACHE`) ลดต้นทุน cache hit จาก ~30s → <50ms
+  (`routers/recommend/tile_cache.py::_TILE_URL_CACHE`) ลดต้นทุน cache hit จาก ~30s → <50ms
 
 ## Tests
 
