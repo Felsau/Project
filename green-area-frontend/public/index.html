@@ -9,6 +9,24 @@
       name="description"
       content="Green Area Analysis — แดชบอร์ดวิเคราะห์พื้นที่สีเขียว NDVI / LST / Urban Coverage ของประเทศไทย"
     />
+
+    <!-- Social share cards (Open Graph + Twitter).
+         NOTE: og:image/og:url ควรเป็น URL เต็ม (absolute) เพื่อให้ตัว scrape
+         (LINE/Facebook/X) ดึงรูปได้ — ตั้ง PUBLIC_URL=https://<โดเมน> ตอน build
+         หรือใส่ "homepage" ใน package.json ให้ %PUBLIC_URL% กลายเป็น URL เต็ม -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Green Area Analysis" />
+    <meta property="og:locale" content="th_TH" />
+    <meta property="og:title" content="Green Area Analysis · Thailand" />
+    <meta property="og:description" content="แดชบอร์ดวิเคราะห์พื้นที่สีเขียว NDVI / LST / Urban Coverage ของประเทศไทย — ดึงข้อมูลจาก Google Earth Engine" />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Green Area Analysis · Thailand" />
+    <meta name="twitter:description" content="แดชบอร์ดวิเคราะห์พื้นที่สีเขียว NDVI / LST / Urban Coverage ของประเทศไทย" />
+    <meta name="twitter:image" content="%PUBLIC_URL%/og-image.png" />
+
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Green Area Analysis · Thailand</title>

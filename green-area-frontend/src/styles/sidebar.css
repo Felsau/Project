@@ -123,3 +123,15 @@
   flex-shrink: 0;
   background: var(--paper);
 }
+
+/* Fallback shown by ErrorBoundary when a panel/tab throws while rendering */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-5);
+  border: 1px solid var(--crit);
+  border-radius: var(--rad);
+  background: var(--crit-soft);
+}
