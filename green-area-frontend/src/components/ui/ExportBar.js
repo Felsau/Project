@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { exportElementPng, exportTabWithMapPng } from '../../utils/exportUtils';
+import { pushError } from '../../utils/toast';
 
 export default function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap = true }) {
   const [busy, setBusy] = useState(null);
@@ -10,7 +11,7 @@ export default function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap
     try { await fn(); }
     catch (e) {
       console.error(e);
-      alert('Export ไม่สำเร็จ: ' + (e?.message || e));
+      pushError('ส่งออกไม่สำเร็จ: ' + (e?.message || e));
     } finally { setBusy(null); }
   };
 

@@ -24,6 +24,7 @@ import MapTooltip from './components/MapTooltip';
 import MapLegend  from './components/MapLegend';
 import Toast      from './components/Toast';
 import TimelapsePlayer from './components/TimelapsePlayer';
+import AboutModal from './components/AboutModal';
 import { pushError } from './utils/toast';
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
   const [tooltip, setTooltip]           = useState(null);
   const [sidebarTab, setSidebarTab]     = useState('stats');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showAbout, setShowAbout]       = useState(false);
   const [theme, setTheme] = useState(() => {
     const saved = typeof localStorage !== 'undefined' && localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') return saved;
@@ -66,6 +68,14 @@ function App() {
     document.documentElement.style.colorScheme = theme;
     try { localStorage.setItem('theme', theme); } catch { /* storage blocked — ignore */ }
   }, [theme]);
+
+  // Reflect the current selection in the tab title — clearer bookmarks and a
+  // readable name for shared deep-links (?p=…).
+  useEffect(() => {
+    const base = 'Green Area Analysis · Thailand';
+    const scope = [province.selectedProvince, district.selectedDistrict].filter(Boolean).join(' · ');
+    document.title = scope ? `${scope} — ${base}` : base;
+  }, [province.selectedProvince, district.selectedDistrict]);
 
   const mapStyle = theme === 'dark' ? MAP_STYLE_DARK : MAP_STYLE;
 
@@ -278,6 +288,7 @@ function App() {
         onToggleSidebar={() => setSidebarCollapsed(c => !c)}
         theme={theme}
         onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+        onShowAbout={() => setShowAbout(true)}
       />
 
       <aside className="side">
@@ -315,6 +326,7 @@ function App() {
       </div>
 
       <Toast />
+      <AboutModal open={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 }

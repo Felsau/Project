@@ -5,6 +5,7 @@ import CompareTab   from './tabs/CompareTab';
 import RecommendTab from './tabs/RecommendTab';
 import CoolingTab   from './tabs/CoolingTab';
 import ProvinceSearch from './ProvinceSearch';
+import ErrorBoundary from './ErrorBoundary';
 
 const TABS = [
   { id: 'stats',     label: 'ข้อมูล' },
@@ -49,10 +50,12 @@ export default function Sidebar({ data, handlers }) {
             {TABS.map(t => (
               <button
                 key={t.id}
+                id={`tab-${t.id}`}
                 className="tab"
                 role="tab"
                 data-active={sidebarTab === t.id}
                 aria-selected={sidebarTab === t.id}
+                aria-controls="sidebar-tabpanel"
                 onClick={() => setSidebarTab(t.id)}
               >
                 {t.label}
@@ -73,12 +76,20 @@ export default function Sidebar({ data, handlers }) {
           </div>
 
           <div className="panel">
-            <div className="panel__inner">
-              {sidebarTab === 'stats'     && <StatsTab     data={data} handlers={handlers} />}
-              {sidebarTab === 'trend'     && <TrendTab     data={data} handlers={handlers} />}
-              {sidebarTab === 'cooling'   && <CoolingTab   data={data} handlers={handlers} />}
-              {sidebarTab === 'compare'   && <CompareTab   data={data} handlers={handlers} />}
-              {sidebarTab === 'recommend' && <RecommendTab data={data} handlers={handlers} />}
+            <div
+              className="panel__inner"
+              id="sidebar-tabpanel"
+              role="tabpanel"
+              aria-labelledby={`tab-${sidebarTab}`}
+              tabIndex={0}
+            >
+              <ErrorBoundary resetKey={`${selectedProvince}:${selectedDistrict}:${sidebarTab}`}>
+                {sidebarTab === 'stats'     && <StatsTab     data={data} handlers={handlers} />}
+                {sidebarTab === 'trend'     && <TrendTab     data={data} handlers={handlers} />}
+                {sidebarTab === 'cooling'   && <CoolingTab   data={data} handlers={handlers} />}
+                {sidebarTab === 'compare'   && <CompareTab   data={data} handlers={handlers} />}
+                {sidebarTab === 'recommend' && <RecommendTab data={data} handlers={handlers} />}
+              </ErrorBoundary>
             </div>
           </div>
 
@@ -99,7 +110,9 @@ export default function Sidebar({ data, handlers }) {
           </div>
           <div className="panel">
             <div className="panel__inner">
-              <OverviewPanel data={data} handlers={handlers} />
+              <ErrorBoundary resetKey="overview">
+                <OverviewPanel data={data} handlers={handlers} />
+              </ErrorBoundary>
             </div>
           </div>
         </>

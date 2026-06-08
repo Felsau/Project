@@ -1,4 +1,4 @@
-export default function AppHeader({ loading, sidebarCollapsed, onToggleSidebar, theme, onToggleTheme }) {
+export default function AppHeader({ loading, sidebarCollapsed, onToggleSidebar, theme, onToggleTheme, onShowAbout }) {
   const isDark = theme === 'dark';
   return (
     <header className="topbar">
@@ -11,6 +11,14 @@ export default function AppHeader({ loading, sidebarCollapsed, onToggleSidebar, 
       <div className="topbar__meta">
         <span className="topbar__source"><strong>Sentinel-2</strong> · Google Earth Engine</span>
       </div>
+      <button
+        className="topbar__icon-btn"
+        onClick={onShowAbout}
+        aria-label="ข้อมูลและระเบียบวิธี"
+        title="ข้อมูลและระเบียบวิธี"
+      >
+        ⓘ
+      </button>
       <button
         className="topbar__icon-btn"
         onClick={onToggleTheme}
