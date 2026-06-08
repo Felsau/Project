@@ -74,8 +74,8 @@ export const exportTabWithMapPng = async (elementId, filename) => {
   const el = document.getElementById(elementId);
   if (!el) throw new Error(`ไม่พบ element id="${elementId}"`);
 
-  // หา canvas ของ DeckGL/MapLibre
-  const mapWrapper = document.querySelector('.map-container');
+  // หา canvas ของ DeckGL/MapLibre (wrapper คือ .canvas ใน App.js)
+  const mapWrapper = document.querySelector('.canvas');
   const mapCanvases = mapWrapper ? Array.from(mapWrapper.querySelectorAll('canvas')) : [];
 
   // สร้าง snapshot ของแผนที่โดยรวมทุก canvas (basemap + deckgl) ด้วย CanvasRenderingContext2D

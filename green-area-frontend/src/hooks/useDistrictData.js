@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { API_BASE } from '../constants';
 import { pushError } from '../utils/toast';
 import { fetchWithRetry } from '../utils/fetchRetry';
@@ -17,6 +17,9 @@ export function useDistrictData() {
   const [districtLstStats, setDistrictLstStats]         = useState(null);
   const [districtLstMonthly, setDistrictLstMonthly]     = useState([]);
   const [districtLstLoading, setDistrictLstLoading]     = useState(false);
+  // last-click-wins: abort any in-flight district fetch when a new one starts,
+  // so a slow response for district A can't overwrite the panel after B is picked
+  const abortRef = useRef(null);
 
   const ensureDistrictsLoaded = async () => {
     if (districtsData || districtsLoading) return;
@@ -62,6 +65,11 @@ export function useDistrictData() {
   };
 
   const fetchDistrictNDVI = async (provinceName, districtName) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     setDistrictNdviLoading(true);
     setDistrictLstLoading(true);
     setDistrictNdviStats(null);
@@ -71,10 +79,10 @@ export function useDistrictData() {
     try {
       const enc = encodeURIComponent;
       const [statsRes, monthlyRes, lstRes, lstMonthlyRes] = await Promise.all([
-        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}`),
-        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}/monthly`),
-        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}`),
-        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}/monthly`),
+        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}`, { signal }),
+        fetchWithRetry(`${API_BASE}/ndvi/${enc(provinceName)}/districts/${enc(districtName)}/monthly`, { signal }),
+        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}`, { signal }),
+        fetchWithRetry(`${API_BASE}/lst/${enc(provinceName)}/districts/${enc(districtName)}/monthly`, { signal }),
       ]);
       const [stats, monthly, lst, lstMonthlyJson] = await Promise.all([
         statsRes.json(), monthlyRes.json(), lstRes.json(), lstMonthlyRes.json(),
@@ -88,15 +96,21 @@ export function useDistrictData() {
         setDistrictCache(prev => ({ ...prev, [key]: stats.ndvi_mean }));
       }
     } catch (err) {
+      if (err?.name === 'AbortError') return;  // superseded by a newer selection
       console.error('ดึงข้อมูล NDVI/LST อำเภอไม่สำเร็จ:', err);
       pushError(`โหลดข้อมูลอำเภอ ${districtName} ไม่สำเร็จ — ลองอีกครั้ง`);
     } finally {
-      setDistrictNdviLoading(false);
-      setDistrictLstLoading(false);
+      // only the most-recent request may clear the loading flags
+      if (abortRef.current === controller) {
+        setDistrictNdviLoading(false);
+        setDistrictLstLoading(false);
+      }
     }
   };
 
   const resetDistrict = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
     setSelectedDistrict(null);
     setSelectedDistrictEN(null);
     setDistrictNdviStats(null);
