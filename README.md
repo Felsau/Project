@@ -94,10 +94,10 @@ green-area-backend/
   generate_districts.py    # one-time: สร้าง thailand_districts.json
   migrations/              # SQL schema สำหรับ Supabase
   routers/
-    ndvi.py                # /ndvi · /ndvi/{p}/monthly · district variants
+    ndvi/                  # /ndvi · /ndvi/{p}/monthly · district variants (endpoints.py + compute.py)
     lst.py                 # /lst · LST annual + monthly
-    maps.py                # /map/* · thumbnails + urban subset
-    recommend.py           # /recommend · AI priority heatmap
+    maps/                  # /maps/* thumbnails (thumbs.py) + /analysis/* (districts/urban/timeseries/cooling/context)
+    recommend/             # /recommend · AI priority heatmap (endpoints + scoring + species + tile_cache)
 
 green-area-frontend/
   src/
@@ -139,3 +139,14 @@ Frontend test suite ตอนนี้คุม smoke render + sidebar empty sta
   1. ENV `THAILAND_GEOJSON_PATH` / `DISTRICTS_GEOJSON_PATH` (override)
   2. `green-area-backend/data/` (production — copy 2 ไฟล์เข้า image)
   3. `../green-area-frontend/public/` (legacy dev-local แบบ monorepo)
+
+---
+
+## License & data attribution
+
+- **โค้ด** — MIT License (ดู [LICENSE](LICENSE))
+- **ข้อมูล/dataset** — แต่ละชุดมี license ของตัวเอง ผู้ใช้ต้องปฏิบัติตามเมื่อนำไปใช้/เผยแพร่ต่อ:
+  - Sentinel-2 (ESA Copernicus) · Landsat 8/9 (USGS/NASA, public domain)
+  - ESA WorldCover v200 (CC BY 4.0) · WorldPop (CC BY 4.0)
+  - GADM 4.1 boundaries (academic/non-commercial) · CARTO + OpenStreetMap basemaps (© OSM, ODbL)
+- รายละเอียด dataset + ระเบียบวิธี + อ้างอิงเชิงวิชาการ ดูได้ในเว็บที่ปุ่ม **ⓘ ข้อมูลและระเบียบวิธี** (มุมขวาบน)
