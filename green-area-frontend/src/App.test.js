@@ -12,7 +12,11 @@ jest.mock('@deck.gl/layers', () => ({
   TextLayer: class {},
 }));
 jest.mock('@deck.gl/geo-layers', () => ({ TileLayer: class {} }));
-jest.mock('@deck.gl/core', () => ({ FlyToInterpolator: class {} }));
+jest.mock('@deck.gl/extensions', () => ({ ClipExtension: class {} }));
+jest.mock('@deck.gl/core', () => ({
+  FlyToInterpolator: class {},
+  WebMercatorViewport: class { getBounds() { return [0, 0, 1, 1]; } },
+}));
 jest.mock('@turf/turf', () => ({
   area: () => 0,
   bbox: () => [0, 0, 0, 0],

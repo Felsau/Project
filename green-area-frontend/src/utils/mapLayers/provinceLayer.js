@@ -6,7 +6,7 @@ import { getNdviRgba } from '../../colorUtils';
 export const provinceLayers = (ctx) => {
   const {
     thailandData, ndviCache, selectedProvinceEN, showingDistricts,
-    selectProvince, setTooltip,
+    selectProvince, setTooltip, rasterActive,
   } = ctx;
   if (!thailandData) return [];
 
@@ -14,14 +14,18 @@ export const provinceLayers = (ctx) => {
     new GeoJsonLayer({
       id: 'thailand-provinces',
       data: thailandData,
-      extruded: !showingDistricts,
+      // flat when drilled into districts OR a raster overlay/swipe is shown
+      extruded: !showingDistricts && !rasterActive,
       wireframe: false,
       getElevation: (f) => {
-        if (showingDistricts) return 0;
+        if (showingDistricts || rasterActive) return 0;
         const ndvi = ndviCache[f.properties.name];
         return ndvi != null ? Math.max(0, ndvi) * 30000 : 0;
       },
       getFillColor: (f) => {
+        // raster overlay: transparent fill so the pixel data underneath stays clean.
+        // The layer is kept (not dropped) so clicks/hover still pick provinces.
+        if (rasterActive) return [0, 0, 0, 0];
         if (showingDistricts) {
           return f.properties.name === selectedProvinceEN
             ? [26, 115, 232, 30] : [200, 230, 200, 20];
@@ -30,6 +34,11 @@ export const provinceLayers = (ctx) => {
         return getNdviRgba(ndviCache[f.properties.name], 200);
       },
       getLineColor: (f) => {
+        if (rasterActive) {
+          // subtle outline for context over the (light) raster basemap
+          return f.properties.name === selectedProvinceEN
+            ? [26, 115, 232, 200] : [80, 80, 80, 90];
+        }
         if (showingDistricts) {
           return f.properties.name === selectedProvinceEN
             ? [26, 115, 232, 180] : [42, 74, 42, 30];
@@ -38,7 +47,8 @@ export const provinceLayers = (ctx) => {
       },
       lineWidthMinPixels: 1,
       pickable: true,
-      autoHighlight: !showingDistricts,
+      // don't repaint a highlight over the raster on hover
+      autoHighlight: !showingDistricts && !rasterActive,
       highlightColor: [26, 115, 232, 80],
       onClick: ({ object }) => {
         if (!object) return;
@@ -54,10 +64,10 @@ export const provinceLayers = (ctx) => {
         } : null);
       },
       updateTriggers: {
-        extruded:     showingDistricts,
-        getElevation: [ndviCache, showingDistricts],
-        getFillColor: [ndviCache, selectedProvinceEN, showingDistricts],
-        getLineColor: [selectedProvinceEN, showingDistricts],
+        extruded:     [showingDistricts, rasterActive],
+        getElevation: [ndviCache, showingDistricts, rasterActive],
+        getFillColor: [ndviCache, selectedProvinceEN, showingDistricts, rasterActive],
+        getLineColor: [selectedProvinceEN, showingDistricts, rasterActive],
       },
     }),
   ];

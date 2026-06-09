@@ -7,7 +7,46 @@ const NDVI_STOPS = [
   { color: '#bbf7d0', label: 'น้อย',         range: '< 0.30' },
 ];
 
-export default function MapLegend() {
+export default function MapLegend({ overlay = 'none', tileInfo = null }) {
+  // When a raster overlay is active, show a continuous gradient scale instead
+  // of the choropleth buckets.
+  if (overlay !== 'none' && tileInfo?.palette?.length) {
+    const gradient = `linear-gradient(to right, ${tileInfo.palette.map(c => `#${c}`).join(', ')})`;
+    const isDiff = !!tileInfo.diff;
+    const isLst = tileInfo.kind === 'lst' || tileInfo.kind === 'lst-diff';
+    const unit = isLst ? '°C' : '';
+
+    // Difference map → diverging scale centred on 0 (− loss/cooler … + gain/warmer)
+    if (isDiff) {
+      return (
+        <div className="legend-card" aria-label="คำอธิบายแผนที่ผลต่าง">
+          <div className="legend-card__title">
+            ผลต่าง {isLst ? 'LST' : 'NDVI'} · {tileInfo.year_a}→{tileInfo.year_b}
+          </div>
+          <div className="legend-gradient" style={{ background: gradient }} />
+          <div className="legend-gradient__scale">
+            <span>{tileInfo.min}{unit}</span>
+            <span>0</span>
+            <span>+{tileInfo.max}{unit}</span>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="legend-card" aria-label="คำอธิบาย raster overlay">
+        <div className="legend-card__title">
+          {isLst ? 'อุณหภูมิผิว · LST' : 'พืชพรรณ · NDVI'} (raster)
+        </div>
+        <div className="legend-gradient" style={{ background: gradient }} />
+        <div className="legend-gradient__scale">
+          <span>{tileInfo.min}{unit}</span>
+          <span>{tileInfo.max}{unit}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="legend-card" aria-label="คำอธิบายสีพื้นที่สีเขียว">
       <div className="legend-card__title">พื้นที่สีเขียว · NDVI</div>
