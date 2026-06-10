@@ -1,0 +1,24 @@
+# Dependabot — เปิด PR อัปเดต dependency อัตโนมัติรายสัปดาห์
+# requirements.txt pin เวอร์ชันแน่น (ดี) แต่ต้องมีตัวคอยเตือนเมื่อมี security patch
+# CI (pytest + eslint + tests) จะรันบนทุก PR ที่ Dependabot เปิด — merge เมื่อเขียวเท่านั้น
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /green-area-backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /green-area-frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # CRA (react-scripts 5) ตรึง toolchain ไว้ — major bump ของ dev-deps มักพังทั้ง build
+    ignore:
+      - dependency-name: react-scripts
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -5,7 +5,7 @@ Output: user_flow_diagram.png (landscape, fits 170mm width in PDF)
 import os
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Circle, Polygon, PathPatch
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch, Circle, PathPatch
 from matplotlib.path import Path
 
 ROOT = os.path.dirname(os.path.abspath(__file__))

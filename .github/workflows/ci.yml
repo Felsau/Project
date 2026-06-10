@@ -25,6 +25,9 @@ jobs:
         run: |
           pip install ruff
           ruff check .
+      - name: Lint root utility scripts (ruff)
+        working-directory: .
+        run: ruff check capture_screenshots.py generate_proposal_pdf.py generate_user_flow_diagram.py
       - name: Run tests
         run: pytest tests/ -v
       # Dependency vulnerability scan — informational for now (continue-on-error).

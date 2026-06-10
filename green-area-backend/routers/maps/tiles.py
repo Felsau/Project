@@ -72,7 +72,7 @@ def _resolve_geom(province_name: str, district_name: str | None) -> dict:
 def _ndvi_image(geom: ee.Geometry, year: int):
     col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
            .filterBounds(geom)
-           .filterDate(f'{year}-01-01', f'{year}-12-31')
+           .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
            .map(mask_s2_clouds))
     if col.size().getInfo() == 0:

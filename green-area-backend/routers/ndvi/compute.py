@@ -56,7 +56,7 @@ def _compute_ndvi_annual(geom: ee.Geometry, year: int, scale: int):
     def s2_col(cloud_pct):
         return (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                 .filterBounds(geom)
-                .filterDate(f'{year}-01-01', f'{year}-12-31')
+                .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
                 .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_pct))
                 .map(mask_s2_clouds))
 
