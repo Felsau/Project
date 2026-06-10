@@ -3,7 +3,7 @@
 """
 import pytest
 
-from stats_utils import linregress, mann_kendall
+from stats_utils import forecast_linear, linregress, mann_kendall
 
 
 # ── linregress ───────────────────────────────────────────────────────────────
@@ -83,3 +83,56 @@ class TestMannKendall:
         # ค่าซ้ำ (ties) ต้องไม่ทำให้ variance พังหรือ p เกินช่วง
         mk = mann_kendall([2, 2, 3, 3, 4, 4])
         assert 0.0 <= mk["p_value"] <= 1.0
+
+
+# ── forecast_linear ──────────────────────────────────────────────────────────
+class TestForecastLinear:
+    def test_perfect_line_projects_exactly(self):
+        # y = 2x — residual ศูนย์ → คาดการณ์ตรงเส้น, ช่วงความเชื่อมั่นแคบมาก
+        fc = forecast_linear([2020, 2021, 2022, 2023], [2.0, 4.0, 6.0, 8.0],
+                             horizon=2)
+        assert fc["slope"] == pytest.approx(2.0)
+        assert fc["n"] == 4
+        assert [p["x"] for p in fc["points"]] == [2024, 2025]
+        assert fc["points"][0]["value"] == pytest.approx(10.0)
+        assert fc["points"][1]["value"] == pytest.approx(12.0)
+        assert fc["points"][0]["lo"] == pytest.approx(10.0, abs=1e-6)
+        assert fc["points"][0]["hi"] == pytest.approx(10.0, abs=1e-6)
+
+    def test_interval_widens_with_horizon(self):
+        # ยิ่ง extrapolate ไกล ช่วงคาดการณ์ยิ่งกว้าง
+        fc = forecast_linear([2019, 2020, 2021, 2022, 2023],
+                             [0.30, 0.34, 0.31, 0.36, 0.35], horizon=3)
+        widths = [p["hi"] - p["lo"] for p in fc["points"]]
+        assert widths[0] < widths[1] < widths[2]
+
+    def test_interval_contains_point_estimate(self):
+        fc = forecast_linear([2020, 2021, 2022, 2023],
+                             [0.40, 0.42, 0.41, 0.44], horizon=3)
+        for p in fc["points"]:
+            assert p["lo"] <= p["value"] <= p["hi"]
+
+    def test_clamp_keeps_values_in_range(self):
+        # NDVI ใกล้เพดาน + แนวโน้มขึ้นชัน → ค่าคาดการณ์/ช่วงต้องไม่ทะลุ 1.0
+        fc = forecast_linear([2020, 2021, 2022], [0.7, 0.85, 0.99],
+                             horizon=3, clamp=(-1.0, 1.0))
+        for p in fc["points"]:
+            assert -1.0 <= p["lo"] <= p["value"] <= p["hi"] <= 1.0
+
+    def test_fewer_than_three_points_returns_none(self):
+        # 2 จุดลากเส้นได้เสมอ (residual=0) — ไม่มีข้อมูลพอประเมินความไม่แน่นอน
+        assert forecast_linear([2022, 2023], [0.3, 0.4]) is None
+        assert forecast_linear([2023], [0.3]) is None
+        assert forecast_linear([], []) is None
+
+    def test_mismatched_lengths_returns_none(self):
+        assert forecast_linear([2021, 2022, 2023], [0.3, 0.4]) is None
+
+    def test_zero_x_variance_returns_none(self):
+        assert forecast_linear([2023, 2023, 2023], [1.0, 2.0, 3.0]) is None
+
+    def test_small_n_uses_wider_t_than_normal(self):
+        # n=3 (df=1) → t=12.706 ไม่ใช่ z=1.96 — ช่วงต้องกว้างกว่า ±1.96·se มาก
+        fc = forecast_linear([2021, 2022, 2023], [0.30, 0.36, 0.31], horizon=1)
+        p = fc["points"][0]
+        assert (p["hi"] - p["lo"]) > 0.1  # กว้างจริงเมื่อข้อมูลน้อย+noisy

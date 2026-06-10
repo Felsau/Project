@@ -285,6 +285,31 @@ class TestTimelapse:
         assert d["province_count"] == 0
         assert d["data"] == {}
 
+    def test_lst_variant_reads_lst_mean(self, client, monkeypatch):
+        """LST timelapse อ่านจาก province_lst_annual (column lst_mean) —
+        โครง response เดียวกับ NDVI · row ที่ lst_mean=None ถูก skip"""
+        c, main = client
+        rows = [
+            {"province": "Bangkok", "year": 2020, "lst_mean": 35.2},
+            {"province": "Bangkok", "year": 2021, "lst_mean": None},
+            {"province": "Chiang Mai", "year": 2020, "lst_mean": 29.8},
+        ]
+        monkeypatch.setattr(main, "supa_call",
+            lambda fn, **kw: _fake_response(rows))
+
+        r = c.get("/timelapse/lst/provinces?start_year=2020&end_year=2021")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["years"] == [2020]
+        assert d["province_count"] == 2
+        assert d["data"]["Bangkok"] == {"2020": 35.2}
+        assert d["data"]["Chiang Mai"] == {"2020": 29.8}
+
+    def test_lst_start_after_end_returns_400(self, client):
+        c, _ = client
+        r = c.get("/timelapse/lst/provinces?start_year=2025&end_year=2020")
+        assert r.status_code == 400
+
 
 # ── GET /analysis/cooling/{province} ─────────────────────────────────────────
 class TestCooling:

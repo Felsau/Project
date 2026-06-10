@@ -20,6 +20,8 @@ FastAPI + Google Earth Engine + Supabase cache
 | GET | `/recommend/{province}/districts/{district}` | AI Recommend ระดับอำเภอ |
 | GET | `/analysis/urban-subset/{province}` | NDVI + green/person ในเขต built-up (WorldCover) |
 | GET | `/analysis/ranking?year=2026` | อันดับจังหวัดตาม green/person (WHO) |
+| GET | `/analysis/timeseries/{province}` | NDVI+LST รายปีจาก cache + Mann-Kendall + forecast 3 ปี (95% PI) |
+| GET | `/timelapse/ndvi/provinces` · `/timelapse/lst/provinces` | ค่า annual ทุกจังหวัดใน range — time-lapse animation |
 | GET | `/compare?provinces=A,B&year=2026` | เปรียบเทียบหลายจังหวัด |
 | GET | `/cache` · `/cache/districts` | ดูสถานะ cache |
 | DELETE | `/cache` · `/cache/{province}` | ล้าง cache (ต้องมี header `X-Admin-Token: $ADMIN_TOKEN`) |
@@ -47,14 +49,14 @@ API docs interactive: `http://localhost:8000/docs`
 
 ## Tests
 
-มี test **72 ตัว** — รันด้วย `.venv/bin/pytest tests/ -v` (รันใน CI ทุก push/PR · ดู
+มี test **82 ตัว** — รันด้วย `.venv/bin/pytest tests/ -v` (รันใน CI ทุก push/PR · ดู
 `../.github/workflows/ci.yml`)
 
 | ไฟล์ | ครอบคลุม |
 |---|---|
-| `tests/test_stats_utils.py` | `linregress` (slope/r) + Mann-Kendall trend significance |
+| `tests/test_stats_utils.py` | `linregress` (slope/r) + Mann-Kendall trend significance + `forecast_linear` (OLS projection + 95% prediction interval) |
 | `tests/test_pure_helpers.py` | `_is_stale` (cache invalidation), WHO status (9 m²/คน), normalize weights, validate geojson path, estimate impact (จำนวนต้นไม้ / cooling / CO₂ / รถยนต์ + สัมประสิทธิ์พันธุ์ไม้ไทย) |
-| `tests/test_endpoints.py` | API endpoints (`/`, `/compare`, `/cache`, `/analysis/ranking`, `/timelapse`, `/analysis/cooling`, DELETE `/cache`) ผ่าน FastAPI `TestClient` + mock `supa_call` |
+| `tests/test_endpoints.py` | API endpoints (`/`, `/compare`, `/cache`, `/analysis/ranking`, `/timelapse` ทั้ง NDVI/LST, `/analysis/cooling`, DELETE `/cache`) ผ่าน FastAPI `TestClient` + mock `supa_call` |
 
 Pure helpers ทดสอบได้โดยไม่ต้องมี credential · endpoint tests mock ทุก call ไป
 Supabase/GEE จึงไม่แตะ external service จริง

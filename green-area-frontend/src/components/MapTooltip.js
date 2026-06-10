@@ -27,6 +27,17 @@ export default function MapTooltip({ tooltip }) {
           NDVI {tooltip.ndvi.toFixed(3)}
         </div>
       )}
+      {tooltip.lst != null && (
+        <div style={{
+          fontSize: 11.5, color: '#c2410c',
+          marginTop: 4, paddingTop: 4,
+          borderTop: '1px dotted #e1e3df',
+          fontFamily: 'IBM Plex Mono, monospace',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          LST {tooltip.lst.toFixed(1)}°C
+        </div>
+      )}
     </div>
   );
 }

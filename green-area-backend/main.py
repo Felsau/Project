@@ -190,27 +190,26 @@ def clear_province_cache(province_name: str, request: Request):
     return {"message": f"✅ Cache cleared for {province_name}"}
 
 
-@app.get("/timelapse/ndvi/provinces", response_model=TimelapseResponse)
-def get_timelapse_ndvi(start_year: YearParam = 2015,
-                       end_year: YearParam = CURRENT_YEAR):
-    """รวม NDVI annual ของทุกจังหวัดใน range — สำหรับ time-lapse animation
+def _timelapse_provinces(table: str, value_col: str,
+                         start_year: int, end_year: int) -> dict:
+    """รวมค่า annual ของทุกจังหวัดใน range จาก cache — ใช้ร่วม NDVI/LST timelapse
     คืนเฉพาะปีที่มี cache อยู่จริงใน Supabase (ไม่ trigger GEE compute)"""
     if start_year > end_year:
         raise HTTPException(status_code=400,
             detail="start_year ต้องน้อยกว่าหรือเท่ากับ end_year")
 
-    result = supa_call(lambda s: s.table("ndvi_annual")
-                       .select("province,year,ndvi_mean")
+    result = supa_call(lambda s: s.table(table)
+                       .select(f"province,year,{value_col}")
                        .gte("year", start_year)
                        .lte("year", end_year)
                        .execute())
     data: dict[str, dict[str, float]] = {}
     years_set: set[int] = set()
     for row in result.data:
-        if row.get("ndvi_mean") is None:
+        if row.get(value_col) is None:
             continue
         p, y = row["province"], row["year"]
-        data.setdefault(p, {})[str(y)] = row["ndvi_mean"]
+        data.setdefault(p, {})[str(y)] = row[value_col]
         years_set.add(y)
 
     return {
@@ -220,6 +219,21 @@ def get_timelapse_ndvi(start_year: YearParam = 2015,
         "province_count": len(data),
         "data": data,
     }
+
+
+@app.get("/timelapse/ndvi/provinces", response_model=TimelapseResponse)
+def get_timelapse_ndvi(start_year: YearParam = 2015,
+                       end_year: YearParam = CURRENT_YEAR):
+    """รวม NDVI annual ของทุกจังหวัดใน range — สำหรับ time-lapse animation"""
+    return _timelapse_provinces("ndvi_annual", "ndvi_mean", start_year, end_year)
+
+
+@app.get("/timelapse/lst/provinces", response_model=TimelapseResponse)
+def get_timelapse_lst(start_year: YearParam = 2015,
+                      end_year: YearParam = CURRENT_YEAR):
+    """รวม LST annual (°C) ของทุกจังหวัด — time-lapse ความร้อนพื้นผิวคู่กับ NDVI"""
+    return _timelapse_provinces("province_lst_annual", "lst_mean",
+                                start_year, end_year)
 
 
 @app.get("/analysis/ranking", response_model=RankingResponse)

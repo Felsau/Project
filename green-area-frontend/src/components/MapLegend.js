@@ -7,7 +7,15 @@ const NDVI_STOPS = [
   { color: '#bbf7d0', label: 'น้อย',         range: '< 0.30' },
 ];
 
-export default function MapLegend({ overlay = 'none', tileInfo = null }) {
+// LST buckets — mirrors getLstRgba (ใช้ตอน time-lapse LST แทนสเกล NDVI)
+const LST_STOPS = [
+  { color: '#ef4444', label: 'ร้อนมาก', range: '≥ 38°C' },
+  { color: '#f97316', label: 'ร้อน',     range: '33–38°C' },
+  { color: '#fbbf24', label: 'ปานกลาง',  range: '28–33°C' },
+  { color: '#60a5fa', label: 'เย็น',     range: '< 28°C' },
+];
+
+export default function MapLegend({ overlay = 'none', tileInfo = null, choropleth = 'ndvi' }) {
   // When a raster overlay is active, show a continuous gradient scale instead
   // of the choropleth buckets.
   if (overlay !== 'none' && tileInfo?.palette?.length) {
@@ -47,10 +55,14 @@ export default function MapLegend({ overlay = 'none', tileInfo = null }) {
     );
   }
 
+  const isLstChoropleth = choropleth === 'lst';
   return (
-    <div className="legend-card" aria-label="คำอธิบายสีพื้นที่สีเขียว">
-      <div className="legend-card__title">พื้นที่สีเขียว · NDVI</div>
-      {NDVI_STOPS.map(s => (
+    <div className="legend-card"
+         aria-label={isLstChoropleth ? 'คำอธิบายสีอุณหภูมิผิว' : 'คำอธิบายสีพื้นที่สีเขียว'}>
+      <div className="legend-card__title">
+        {isLstChoropleth ? 'อุณหภูมิผิว · LST' : 'พื้นที่สีเขียว · NDVI'}
+      </div>
+      {(isLstChoropleth ? LST_STOPS : NDVI_STOPS).map(s => (
         <div className="legend-card__row" key={s.range}>
           <span className="legend-card__swatch" style={{ background: s.color }} />
           <span className="legend-card__label">{s.label}</span>

@@ -50,10 +50,18 @@ const openBtn = {
 export default function TimelapsePlayer({ timelapse }) {
   const {
     active, setActive, close,
+    metric, setMetric,
     data, year, setYear,
     playing, setPlaying, speed, setSpeed,
     loading, loadError, fetchTimelapse,
   } = timelapse;
+
+  const metricToggle = (
+    <span style={{ display: 'flex', gap: 4 }} role="group" aria-label="เลือกตัวชี้วัด">
+      <button style={btn(metric === 'ndvi')} onClick={() => setMetric('ndvi')}>NDVI</button>
+      <button style={btn(metric === 'lst')} onClick={() => setMetric('lst')}>LST</button>
+    </span>
+  );
 
   if (!active) {
     return (
@@ -93,8 +101,9 @@ export default function TimelapsePlayer({ timelapse }) {
       <div style={panel}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, fontSize: 12.5, color: '#6b736d' }}>
-            ไม่มีข้อมูล NDVI cache เพียงพอ — คลิกบางจังหวัดเพื่อ compute ก่อน
+            ไม่มีข้อมูล {metric.toUpperCase()} cache เพียงพอ — คลิกบางจังหวัดเพื่อ compute ก่อน
           </div>
+          {metricToggle}
           <button style={btn()} onClick={close} aria-label="ปิด">ปิด</button>
         </div>
       </div>
@@ -117,7 +126,7 @@ export default function TimelapsePlayer({ timelapse }) {
           fontSize: 10.5, fontWeight: 600, letterSpacing: '0.12em',
           textTransform: 'uppercase', color: '#3a423d',
         }}>
-          Time-lapse · NDVI
+          Time-lapse · {metric === 'lst' ? 'LST' : 'NDVI'}
         </span>
         <span style={{
           color: '#6b736d',
@@ -127,6 +136,7 @@ export default function TimelapsePlayer({ timelapse }) {
           {minY}–{maxY}
         </span>
         <span style={{ flex: 1 }} />
+        {metricToggle}
         <span style={{ color: '#6b736d', fontSize: 11.5 }}>
           {data.province_count} จังหวัด
         </span>
