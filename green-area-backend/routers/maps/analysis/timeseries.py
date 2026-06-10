@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 
 from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
-from stats_utils import mann_kendall
+from stats_utils import forecast_linear, mann_kendall
 
 router = APIRouter()
 
@@ -93,6 +93,20 @@ def get_timeseries(province_name: str,
     if mk_lst:
         summary["lst_trend"] = mk_lst
 
+    # Forecast — OLS projection 3 ปีข้างหน้า + 95% prediction interval ต่อ metric
+    # ใช้เฉพาะปีที่มีค่าจริง · ต้อง ≥ 3 จุด (ดูเงื่อนไขใน forecast_linear)
+    valid_pct = [s for s in series if s.get("green_area_pct") is not None]
+    forecast = {}
+    for key, rows, clamp in (
+        ("ndvi_mean", valid_ndvi, (-1.0, 1.0)),
+        ("green_area_pct", valid_pct, (0.0, 100.0)),
+        ("lst_mean", valid_lst, None),
+    ):
+        fc = forecast_linear([r["year"] for r in rows], [r[key] for r in rows],
+                             horizon=3, clamp=clamp)
+        if fc:
+            forecast[key] = fc
+
     return {
         "province": province_name,
         "district": district_name,
@@ -101,4 +115,5 @@ def get_timeseries(province_name: str,
         "years_in_range": len(year_range),
         "data": series,
         "summary": summary,
+        "forecast": forecast,
     }

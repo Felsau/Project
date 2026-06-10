@@ -37,3 +37,12 @@ export const getNdviRgba = (value, alpha = 200) => {
   if (value >= 0.3) return [134, 239, 172, alpha];
   return [187, 247, 208, alpha];
 };
+
+// เกณฑ์เดียวกับ getLstColor — ใช้กับ choropleth ตอน time-lapse LST
+export const getLstRgba = (value, alpha = 200) => {
+  if (value == null) return [218, 220, 224, 120];
+  if (value < 28) return [96, 165, 250, alpha];
+  if (value < 33) return [251, 191, 36, alpha];
+  if (value < 38) return [249, 115, 22, alpha];
+  return [239, 68, 68, alpha];
+};

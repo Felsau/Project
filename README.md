@@ -125,7 +125,7 @@ green-area-frontend/
 cd green-area-frontend
 npm test -- --watchAll=false
 
-# Backend (72 tests · pytest)
+# Backend (82 tests · pytest)
 cd green-area-backend
 pytest tests/ -v
 ```

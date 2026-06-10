@@ -1,10 +1,12 @@
 """Pure statistical helpers — ordinary-least-squares regression + Mann-Kendall
-trend test. Stdlib `math` only (no numpy/scipy) so they unit-test trivially and
-run server-side on cached rows without touching GEE/Supabase.
+trend test + linear forecast. Stdlib `math` only (no numpy/scipy) so they
+unit-test trivially and run server-side on cached rows without touching
+GEE/Supabase.
 
 ใช้ใน:
   - /analysis/cooling  → linregress(NDVI, LST) วัด cooling gradient
   - /analysis/timeseries → mann_kendall() ทดสอบนัยสำคัญของแนวโน้มหลายปี
+                         + forecast_linear() คาดการณ์ปีข้างหน้า
 """
 import math
 
@@ -97,4 +99,87 @@ def mann_kendall(values, alpha: float = 0.05) -> dict | None:
         "p_value": round(p, 4),
         "trend": trend,
         "n": n,
+    }
+
+
+# ค่าวิกฤต t สองหาง 95% ตาม degrees of freedom — series รายปีมีจุดน้อย (df มัก
+# < 10) ใช้ z=1.96 ตรงๆ จะได้ช่วงคาดการณ์แคบเกินจริง
+_T_CRIT_95 = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    12: 2.179, 15: 2.131, 20: 2.086, 25: 2.060, 30: 2.042,
+}
+
+
+def _t_crit(df: int) -> float:
+    """ค่า t วิกฤต 95% — เลือกค่าของ df ที่รู้จักตัวล่าสุดที่ ≤ df (conservative)"""
+    if df <= 0:
+        return float("inf")
+    best = _T_CRIT_95[1]
+    for known, t in sorted(_T_CRIT_95.items()):
+        if known <= df:
+            best = t
+        else:
+            break
+    return best if df <= 30 else 1.96
+
+
+def forecast_linear(xs, ys, horizon: int = 3,
+                    clamp: tuple[float, float] | None = None) -> dict | None:
+    """OLS projection ไปอีก `horizon` จุดข้างหน้า พร้อม 95% prediction interval.
+
+    ใช้กับ series รายปี (xs=ปี, ys=ค่า) — คืน dict(slope, intercept, r2, n,
+    points) โดย points = [{x, value, lo, hi}] · clamp=(min, max) บีบผลให้อยู่
+    ในช่วงที่เป็นไปได้จริง เช่น NDVI ∈ (-1, 1) หรือ % ∈ (0, 100).
+
+    คืน None ถ้าจุด < 3 — เส้นตรงลาก 2 จุดได้เสมอ (residual = 0) จึงไม่มี
+    ข้อมูลพอประเมินความไม่แน่นอนของการคาดการณ์.
+    """
+    n = len(xs)
+    if n < 3 or len(ys) != n:
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    if sxx == 0:
+        return None  # x คงที่ → หาความชันไม่ได้
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    syy = sum((y - mean_y) ** 2 for y in ys)
+    # คำนวณจากค่า unrounded — ไม่ reuse linregress() เพราะ slope ถูก round 4 ตำแหน่ง
+    # (NDVI เปลี่ยน ~0.001/ปี การ round ก่อนคูณ horizon ทำให้คลาดเคลื่อนสะสม)
+    slope = sxy / sxx
+    intercept = mean_y - slope * mean_x
+    r = 0.0 if syy == 0 else sxy / math.sqrt(sxx * syy)
+    r = max(-1.0, min(1.0, r))
+
+    df = n - 2
+    sse = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+    se = math.sqrt(sse / df)
+    t = _t_crit(df)
+
+    def _clamped(v: float) -> float:
+        if clamp is None:
+            return v
+        return max(clamp[0], min(clamp[1], v))
+
+    last_x = max(xs)
+    points = []
+    for k in range(1, horizon + 1):
+        x = last_x + k
+        y_hat = slope * x + intercept
+        # prediction interval ของ observation ใหม่ — กว้างขึ้นเมื่อ extrapolate ไกล
+        se_pred = se * math.sqrt(1.0 + 1.0 / n + (x - mean_x) ** 2 / sxx)
+        points.append({
+            "x": x,
+            "value": round(_clamped(y_hat), 4),
+            "lo": round(_clamped(y_hat - t * se_pred), 4),
+            "hi": round(_clamped(y_hat + t * se_pred), 4),
+        })
+
+    return {
+        "slope": round(slope, 4),
+        "intercept": round(intercept, 4),
+        "r2": round(r * r, 4),
+        "n": n,
+        "points": points,
     }

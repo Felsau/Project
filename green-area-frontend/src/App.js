@@ -34,6 +34,9 @@ import { pushError } from './utils/toast';
 // combined `layers` memo.
 const EMPTY_LAYERS = [];
 
+// Sidebar tab ids — whitelist for the ?tab= deep-link param (mirrors Sidebar TABS)
+const TAB_IDS = ['stats', 'trend', 'cooling', 'compare', 'recommend'];
+
 function App() {
   const [thailandData, setThailandData] = useState(null);
   const [loading, setLoading]           = useState(true);
@@ -69,6 +72,8 @@ function App() {
     (side) => setSwipeTilesReady(s => (s[side] ? s : { ...s, [side]: true })), []);
 
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
+  // time-lapse LST เล่นอยู่ → ค่าใน cache เป็น °C — provinceLayer ใช้สลับสเกลสี
+  const timelapseMetric = timelapse.timelapseCache ? timelapse.metric : null;
 
   // Province list for the search/select box — Thai + English, sorted by Thai name.
   const provinceList = useMemo(
@@ -110,30 +115,63 @@ function App() {
       });
   }, []);
 
-  // Deep-link: restore province (?p=) and ranking year (?year=) from the URL once
-  // the map data is ready, then keep the URL in sync for shareable links.
+  // Deep-link: restore province (?p=), district (?d=), sidebar tab (?tab=) and
+  // ranking year (?year=) from the URL once the map data is ready, then keep
+  // the URL in sync for shareable links.
   const didInitFromUrl = useRef(false);
   const [urlReady, setUrlReady] = useState(false);
+  // district restore ต้องรอ thailand_districts.json โหลดเสร็จ (async หลัง
+  // selectProvince) — พักไว้ใน ref แล้วให้ effect ด้านล่างเลือกเมื่อข้อมูลมา
+  const pendingDistrictRef = useRef(null);
   useEffect(() => {
     if (didInitFromUrl.current || !thailandData) return;
     didInitFromUrl.current = true;
     const params = new URLSearchParams(window.location.search);
     const year = Number(params.get('year'));
     if (year && !Number.isNaN(year)) ranking.setRankingYear(year);
+    const tab = params.get('tab');
+    if (tab && TAB_IDS.includes(tab)) setSidebarTab(tab);
     const p = params.get('p');
-    if (p && PROVINCE_TH[p]) selectProvince(p);
+    if (p && PROVINCE_TH[p]) {
+      selectProvince(p);
+      const d = params.get('d');
+      if (d) pendingDistrictRef.current = { province: p, district: d };
+    }
     setUrlReady(true);  // only now may the writer below touch the URL
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thailandData]);
 
+  // Complete the ?d= restore once district boundaries are in — mirrors the
+  // district-layer click handler, minus the tab switch (keep the ?tab= choice).
+  useEffect(() => {
+    const pending = pendingDistrictRef.current;
+    if (!pending || !district.districtsData) return;
+    pendingDistrictRef.current = null;
+    const feat = district.districtsData.features.find(
+      f => f.properties.province === pending.province
+        && f.properties.name === pending.district);
+    if (!feat) return;  // ชื่ออำเภอใน URL ไม่ตรงกับข้อมูล — ข้ามเงียบๆ
+    district.setSelectedDistrict(feat.properties.name_th || feat.properties.name);
+    district.setSelectedDistrictEN(feat.properties.name);
+    district.setDistrictArea((turf.area(feat) / 1_000_000).toFixed(2));
+    district.fetchDistrictNDVI(pending.province, feat.properties.name);
+    // Intentional partial deps — district hook fns are stable setters/callbacks
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [district.districtsData]);
+
   useEffect(() => {
     if (!urlReady) return;  // don't clobber the incoming URL before it's restored
     const params = new URLSearchParams();
-    if (province.selectedProvinceEN) params.set('p', province.selectedProvinceEN);
+    if (province.selectedProvinceEN) {
+      params.set('p', province.selectedProvinceEN);
+      if (district.selectedDistrictEN) params.set('d', district.selectedDistrictEN);
+    }
+    if (sidebarTab !== 'stats') params.set('tab', sidebarTab);
     if (ranking.rankingYear !== CURRENT_YEAR) params.set('year', ranking.rankingYear);
     const qs = params.toString();
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
-  }, [urlReady, province.selectedProvinceEN, ranking.rankingYear]);
+  }, [urlReady, province.selectedProvinceEN, district.selectedDistrictEN,
+      sidebarTab, ranking.rankingYear]);
 
   // cooling analysis is province-scoped — clear it whenever the province changes.
   // Intentional single dep: resetCooling is stable; depending on `cooling` re-fires each render.
@@ -291,7 +329,7 @@ function App() {
   }, [thailandData]);
 
   const baseLayers = useMemo(() => buildMapLayers({
-    thailandData, ndviCache: effectiveNdviCache,
+    thailandData, ndviCache: effectiveNdviCache, timelapseMetric,
     selectedProvinceEN:    province.selectedProvinceEN,
     setSelectedProvince:   province.setSelectedProvince,
     setSelectedProvinceEN: province.setSelectedProvinceEN,
@@ -319,7 +357,7 @@ function App() {
     // Intentional partial deps — only re-layer on data/selection/zoom changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
-    thailandData, effectiveNdviCache,
+    thailandData, effectiveNdviCache, timelapseMetric,
     province.selectedProvinceEN,
     district.districtsData, district.districtCache, district.selectedDistrictEN,
     showingDistricts,
@@ -371,6 +409,7 @@ function App() {
     trendLoading:  trend.trendLoading,
     trendProgress: trend.trendProgress,
     trendMetric:   trend.trendMetric,
+    trendForecast: trend.trendForecast,
     compareList:    compare.compareList,
     compareYear:    compare.compareYear,
     compareData:    compare.compareData,
@@ -452,6 +491,7 @@ function App() {
           tileInfo={swipe.active
             ? (swipe.mode === 'diff' ? swipe.diffTile : swipe.tileA)
             : raster.tileInfo}
+          choropleth={timelapseMetric === 'lst' ? 'lst' : 'ndvi'}
         />
 
         {province.selectedProvinceEN && (

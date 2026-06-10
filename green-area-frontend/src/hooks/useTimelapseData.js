@@ -5,11 +5,13 @@ import { fetchWithRetry } from '../utils/fetchRetry';
 
 const DEFAULT_START = 2015;
 
-// Time-lapse animation บนแผนที่ — เล่น NDVI annual จาก cache (ไม่ trigger GEE)
-// timelapseCache ทำงานเป็น drop-in replacement ของ ndviCache: { province: ndvi_value }
+// Time-lapse animation บนแผนที่ — เล่น NDVI/LST annual จาก cache (ไม่ trigger GEE)
+// timelapseCache ทำงานเป็น drop-in replacement ของ ndviCache: { province: value }
 // ตอนปีที่เลือก ระบบจะส่งให้ mapLayers ใช้แทน ndviCache ปกติ
+// (metric='lst' → value เป็น °C — provinceLayer ใช้ timelapseMetric เลือกสเกลสี)
 export function useTimelapseData() {
   const [active, setActive]     = useState(false);
+  const [metric, setMetric]     = useState('ndvi');   // 'ndvi' | 'lst'
   const [data, setData]         = useState(null);
   const [year, setYear]         = useState(null);
   const [playing, setPlaying]   = useState(false);
@@ -30,7 +32,7 @@ export function useTimelapseData() {
     setLoading(true);
     setLoadError(false);
     try {
-      const url = `${API_BASE}/timelapse/ndvi/provinces?start_year=${DEFAULT_START}&end_year=${CURRENT_YEAR}`;
+      const url = `${API_BASE}/timelapse/${metric}/provinces?start_year=${DEFAULT_START}&end_year=${CURRENT_YEAR}`;
       const r = await fetchWithRetry(url, { signal: controller.signal });
       if (controller.signal.aborted) return;
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -41,7 +43,7 @@ export function useTimelapseData() {
       setData(json);
       setYear(json.years?.[0] ?? null);
       if (!json.years?.length) {
-        pushError('ยังไม่มีข้อมูลพอสำหรับ time-lapse — ลองคลิกจังหวัดเพื่อ cache ก่อน');
+        pushError(`ยังไม่มีข้อมูล ${metric.toUpperCase()} พอสำหรับ time-lapse — ลองคลิกจังหวัดเพื่อ cache ก่อน`);
       }
     } catch (e) {
       if (e?.name === 'AbortError') return;  // ถูก cancel ไม่ต้อง toast
@@ -54,7 +56,20 @@ export function useTimelapseData() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [metric]);
+
+  // metric เปลี่ยน → ทิ้งข้อมูลชุดเก่า ให้ auto-fetch effect ด้านล่างดึงชุดใหม่
+  // (ใช้ ref กันไม่ให้ effect ล้าง data ตอน mount แรกโดยไม่จำเป็น)
+  const prevMetricRef = useRef(metric);
+  useEffect(() => {
+    if (prevMetricRef.current === metric) return;
+    prevMetricRef.current = metric;
+    abortRef.current?.abort();
+    setPlaying(false);
+    setData(null);
+    setYear(null);
+    setLoadError(false);
+  }, [metric]);
 
   // เปิด panel ครั้งแรก → fetch อัตโนมัติ (เฉพาะตอนยังไม่มี data และยังไม่เคย fail)
   // loadError gate กัน loop: ถ้า fail → ต้องให้ user กด "ลองใหม่" หรือ close+open
@@ -106,6 +121,7 @@ export function useTimelapseData() {
 
   return {
     active, setActive, close,
+    metric, setMetric,
     data, year, setYear,
     playing, setPlaying, speed, setSpeed,
     loading, loadError, fetchTimelapse,

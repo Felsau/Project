@@ -8,11 +8,15 @@ export function useTrendData() {
   const [trendLoading, setTrendLoading] = useState(false);
   const [trendProgress, setTrendProgress] = useState('');
   const [trendMetric, setTrendMetric]   = useState('ndvi_mean');
+  // forecast จาก /analysis/timeseries — keyed ตาม metric (ndvi_mean,
+  // green_area_pct, lst_mean) แต่ละตัวมี points = [{x, value, lo, hi}]
+  const [trendForecast, setTrendForecast] = useState(null);
 
   const fetchTrend = async (provinceName, years) => {
     if (!years.length) return;
     setTrendLoading(true);
     setTrendData([]);
+    setTrendForecast(null);
     setTrendProgress('');
     const sorted = [...years].sort((a, b) => a - b);
     const results = [];
@@ -37,6 +41,22 @@ export function useTrendData() {
     if (failedYears.length) {
       pushError(`โหลด trend ปี ${failedYears.join(', ')} ไม่สำเร็จ`);
     }
+    // คาดการณ์ — ใช้ปีที่เพิ่ง cache ข้างบน (timeseries อ่าน cache เท่านั้น
+    // ไม่ trigger GEE) ต้อง ≥ 3 ปีถึงมี forecast · fail เงียบๆ ได้ ไม่ใช่ข้อมูลหลัก
+    if (results.length >= 3) {
+      try {
+        setTrendProgress('กำลังคำนวณคาดการณ์...');
+        const r = await fetch(
+          `${API_BASE}/analysis/timeseries/${encodeURIComponent(provinceName)}` +
+          `?start_year=${sorted[0]}&end_year=${sorted[sorted.length - 1]}`);
+        if (r.ok) {
+          const ts = await r.json();
+          setTrendForecast(ts.forecast && Object.keys(ts.forecast).length ? ts.forecast : null);
+        }
+      } catch (err) {
+        console.error('fetchTrend forecast:', err);
+      }
+    }
     setTrendProgress('');
     setTrendLoading(false);
   };
@@ -47,10 +67,14 @@ export function useTrendData() {
     );
   };
 
-  const resetTrend = useCallback(() => setTrendData([]), []);
+  const resetTrend = useCallback(() => {
+    setTrendData([]);
+    setTrendForecast(null);
+  }, []);
 
   return {
     trendYears, trendData, trendLoading, trendProgress, trendMetric,
+    trendForecast,
     setTrendMetric, fetchTrend, toggleTrendYear, resetTrend,
   };
 }
