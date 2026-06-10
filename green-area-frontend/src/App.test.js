@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import App from './App';
 
 jest.mock('@deck.gl/react', () => ({
@@ -23,13 +23,28 @@ jest.mock('@turf/turf', () => ({
 }));
 jest.mock('react-map-gl/maplibre', () => ({ __esModule: true, default: () => null }));
 
-test('renders app header', async () => {
-  render(<App />);
-  // findByText รอ async fetch จบ → กัน act() warning จาก useEffect
-  expect(await screen.findByText('Green Area Analysis')).toBeInTheDocument();
+beforeEach(() => {
+  sessionStorage.clear();                              // landing gate ใช้ sessionStorage
+  window.history.replaceState(null, '', '/');          // ล้าง deep-link param จาก test ก่อนหน้า
 });
 
-test('shows overview panel when nothing selected', async () => {
+test('shows the landing page first', async () => {
+  render(<App />);
+  // findByRole รอ async fetch จบ → กัน act() warning จาก useEffect
+  expect(await screen.findByRole('button', { name: /เข้าสู่แดชบอร์ด/ })).toBeInTheDocument();
+});
+
+test('enters the dashboard from the landing CTA', async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole('button', { name: /เข้าสู่แดชบอร์ด/ }));
+  expect(await screen.findByText('Green Area Analysis')).toBeInTheDocument();
+  // overview panel shows when nothing selected
+  expect(await screen.findByText('โหลดอันดับรายปี')).toBeInTheDocument();
+});
+
+test('deep-link params skip the landing page', async () => {
+  window.history.replaceState(null, '', '/?tab=stats');
   render(<App />);
   expect(await screen.findByText('โหลดอันดับรายปี')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /เข้าสู่แดชบอร์ด/ })).not.toBeInTheDocument();
 });
