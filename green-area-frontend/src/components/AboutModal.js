@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 // Data sources + methodology + citations — surfaced so the public dashboard is
 // academically traceable. Kept as a modal so it's reachable from anywhere
 // without taking a province-scoped sidebar tab slot.
-const DATASETS = [
+export const DATASETS = [
   ['Sentinel-2 (ESA Copernicus)', 'COPERNICUS/S2_SR_HARMONIZED — คำนวณ NDVI ความละเอียด 10 m'],
   ['Landsat 8/9 (USGS/NASA)', 'LC08 / LC09 C02/T1_L2 — อุณหภูมิผิวพื้น (LST) 30 m'],
   ['ESA WorldCover v200', 'นิยามเขตเมือง (Built-up) สำหรับ Urban subset'],

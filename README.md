@@ -108,7 +108,7 @@ green-area-frontend/
   src/
     App.js                 # entry + DeckGL setup
     constants.js           # API_BASE, CURRENT_YEAR, PROVINCE_TH, etc.
-    components/            # AppHeader, Sidebar, MapTooltip, Toast
+    components/            # Landing (หน้าแรก), AppHeader, Sidebar, MapTooltip, Toast
     hooks/                 # useNdviCache, useProvinceData, useDistrictData, ...
     utils/                 # mapLayers, exportUtils (PDF), toast (pub/sub)
   public/

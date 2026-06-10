@@ -6,14 +6,21 @@
   border-bottom: 1px solid var(--rule);
 }
 
+/* The brand is a button — clicking it returns to the landing page. */
 .topbar__brand {
   display: flex;
   align-items: center;
   gap: var(--s-3);
   padding: 0 var(--s-5);
+  background: transparent;
+  border: none;
   border-right: 1px solid var(--rule);
   min-width: 360px;
+  cursor: pointer;
+  text-align: left;
 }
+
+.topbar__brand:hover { background: var(--ink-8); }
 
 .topbar__mark {
   width: 18px; height: 18px;

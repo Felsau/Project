@@ -28,6 +28,7 @@ import MapLegend  from './components/MapLegend';
 import Toast      from './components/Toast';
 import TimelapsePlayer from './components/TimelapsePlayer';
 import AboutModal from './components/AboutModal';
+import Landing from './components/Landing';
 import { pushError } from './utils/toast';
 
 // Stable empty layer array so panning while swipe is OFF doesn't churn the
@@ -52,6 +53,22 @@ function App() {
     if (saved === 'light' || saved === 'dark') return saved;
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+
+  // Landing gate — shown once per browser session. Shared deep-links
+  // (?p= ?d= ?tab= ?year=) must keep opening the dashboard directly.
+  const [showLanding, setShowLanding] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (['p', 'd', 'tab', 'year'].some(k => params.has(k))) return false;
+    try { return sessionStorage.getItem('landing-seen') !== '1'; } catch { return true; }
+  });
+  const enterDashboard = useCallback(() => {
+    try { sessionStorage.setItem('landing-seen', '1'); } catch { /* storage blocked — ignore */ }
+    setShowLanding(false);
+  }, []);
+  const goToLanding = useCallback(() => {
+    try { sessionStorage.removeItem('landing-seen'); } catch { /* storage blocked — ignore */ }
+    setShowLanding(true);
+  }, []);
 
   const { ndviCache, setNdviCache } = useNdviCache();
   const province = useProvinceData({ setNdviCache });
@@ -459,6 +476,21 @@ function App() {
     onCancelCompute:  coverage.cancelCompute,
   };
 
+  // Landing view — the dashboard (map, sidebar) isn't mounted yet, but the
+  // hooks above already prefetch /thailand.json so entry feels instant.
+  if (showLanding) {
+    return (
+      <>
+        <Landing
+          onEnter={enterDashboard}
+          theme={theme}
+          onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+        />
+        <Toast />
+      </>
+    );
+  }
+
   return (
     <div className="App" data-sidebar={sidebarCollapsed ? 'collapsed' : 'open'}>
       <AppHeader
@@ -468,6 +500,7 @@ function App() {
         theme={theme}
         onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
         onShowAbout={() => setShowAbout(true)}
+        onGoHome={goToLanding}
       />
 
       <aside className="side">
