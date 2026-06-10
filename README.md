@@ -1,5 +1,8 @@
 # Green Area Analysis · Thailand
 
+[![CI](https://github.com/Felsau/Project/actions/workflows/ci.yml/badge.svg)](https://github.com/Felsau/Project/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 แดชบอร์ดวิเคราะห์พื้นที่สีเขียวของประเทศไทย ดึงข้อมูลจาก Google Earth Engine
 แล้วประมวลผล NDVI / LST / Urban-subset + แนะนำพื้นที่ที่ควรปลูกต้นไม้ (AI Recommend)
 
@@ -36,7 +39,9 @@
 - เปิด SQL Editor รัน migration ตามลำดับ:
   - `green-area-backend/migrations/000_initial_schema.sql` (สร้างตารางทั้งหมด)
   - `001_add_dense_area_columns.sql` (เพิ่ม column dense forest)
-  - `002_constraints_and_cache_meta.sql` (CHECK constraints + cache_version/expires_at + index)
+  - `002_constraints_and_cache_meta.sql` (CHECK constraints + cache_version + index)
+  - `003_add_impact_column.sql` (เพิ่ม column impact ใน planting_recommendations)
+  - `004_drop_unused_expires_at.sql` (ลบ expires_at ที่เลิกใช้ — tile URL ย้ายไป in-process cache)
 - เอา `URL` และ `service_role` key จากหน้า Project Settings → API
 
 ### 2) Backend
@@ -116,12 +121,21 @@ green-area-frontend/
 ## Tests
 
 ```powershell
+# Frontend (40 tests · 5 suites)
 cd green-area-frontend
 npm test -- --watchAll=false
+
+# Backend (72 tests · pytest)
+cd green-area-backend
+pytest tests/ -v
 ```
 
-Frontend test suite ตอนนี้คุม smoke render + sidebar empty state เท่านั้น
-(`src/App.test.js`) Backend ยังไม่มี test — เป็น future work
+- **Frontend** — smoke render + colorUtils + reportPdf helpers + hooks
+  (`useProvinceData`, `useDistrictData`)
+- **Backend** — pure helpers (stats, WHO status, impact), endpoint tests ผ่าน
+  FastAPI `TestClient` + mock `supa_call` (ดู [green-area-backend/README.md](green-area-backend/README.md#tests))
+
+ทั้งสอง suite รันอัตโนมัติใน CI ทุก push/PR (ดู [.github/workflows/ci.yml](.github/workflows/ci.yml))
 
 ---
 

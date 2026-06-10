@@ -39,7 +39,7 @@ def assert_imagery_available(geom: ee.Geometry, year: int) -> None:
     ไม่งั้น guard จะคลาดกับ compute จริง"""
     s2_size = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                .filterBounds(geom)
-               .filterDate(f'{year}-01-01', f'{year}-12-31')
+               .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
                .size())
     lst_size = get_lst_col(geom, year).size()
@@ -75,7 +75,7 @@ def compute_priority(geom: ee.Geometry, year: int,
     # ── 1. NDVI ────────────────────────────────────────────────
     s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
           .filterBounds(geom)
-          .filterDate(f'{year}-01-01', f'{year}-12-31')
+          .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
           .map(mask_s2_clouds))
     ndvi = s2.median().normalizedDifference(['B8', 'B4']).rename('NDVI')
