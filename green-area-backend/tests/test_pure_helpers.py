@@ -8,6 +8,8 @@ import pytest
 # Import จาก backend modules — conftest.py ตั้ง sys.path ให้แล้ว
 from routers.ndvi import _is_stale, compute_who_status
 from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP
+from polygon_utils import (
+    validate_polygon_geometry, polygon_area_km2, validate_drawn_polygon)
 from dependencies import _validate_geojson_path, CURRENT_CACHE_VERSION
 from impact import estimate_impact, IMPACT_DEFAULTS, TREE_CO2_PER_YEAR
 
@@ -216,3 +218,94 @@ class TestEstimateImpact:
                    "Dipterocarpus alatus", "Hopea odorata"]:
             assert sp in TREE_CO2_PER_YEAR, f"missing coefficient: {sp}"
             assert TREE_CO2_PER_YEAR[sp] > 0
+
+
+# ── validate_polygon_geometry (custom-area) ──────────────────────────────────
+class TestValidatePolygon:
+    # ring สี่เหลี่ยมปิด (จุดแรก = จุดสุดท้าย)
+    _SQUARE = {"type": "Polygon", "coordinates": [[
+        [100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]]}
+
+    def test_valid_polygon_returns_coords(self):
+        coords = validate_polygon_geometry(self._SQUARE)
+        assert coords == self._SQUARE["coordinates"]
+
+    def test_non_dict_raises(self):
+        with pytest.raises(ValueError):
+            validate_polygon_geometry("not-a-dict")
+
+    def test_wrong_type_raises(self):
+        with pytest.raises(ValueError, match="Polygon"):
+            validate_polygon_geometry({"type": "Point", "coordinates": [100.0, 13.0]})
+
+    def test_too_few_points_raises(self):
+        # 3 ตำแหน่ง (รวมปิด) = 2 จุดจริง → น้อยกว่าขั้นต่ำ
+        tri = {"type": "Polygon", "coordinates": [[[100.0, 13.0], [100.1, 13.0], [100.0, 13.0]]]}
+        with pytest.raises(ValueError, match="3 จุด"):
+            validate_polygon_geometry(tri)
+
+    def test_out_of_range_coordinate_raises(self):
+        bad = {"type": "Polygon", "coordinates": [[
+            [200.0, 13.0], [100.1, 13.0], [100.1, 13.1], [200.0, 13.0]]]}
+        with pytest.raises(ValueError):
+            validate_polygon_geometry(bad)
+
+    def test_non_numeric_coordinate_raises(self):
+        bad = {"type": "Polygon", "coordinates": [[
+            ["x", 13.0], [100.1, 13.0], [100.1, 13.1], ["x", 13.0]]]}
+        with pytest.raises(ValueError):
+            validate_polygon_geometry(bad)
+
+    def test_empty_coordinates_raises(self):
+        with pytest.raises(ValueError):
+            validate_polygon_geometry({"type": "Polygon", "coordinates": []})
+
+
+# ── polygon_area_km2 (geodesic) ──────────────────────────────────────────────
+class TestPolygonArea:
+    def test_known_box_area_within_tolerance(self):
+        # กล่อง 0.1°×0.1° ที่ ~13°N: ลองจิจูดหด cos(13°)≈0.974
+        # ด้านราว 11.13 km (lat) × 10.84 km (lng) ≈ 120 km² (±5%)
+        ring = [[100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]
+        area = polygon_area_km2([ring])
+        assert 114 < area < 126, f"got {area} km²"
+
+    def test_winding_order_independent(self):
+        cw = [[100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]
+        ccw = list(reversed(cw))
+        assert polygon_area_km2([cw]) == pytest.approx(polygon_area_km2([ccw]), rel=1e-9)
+
+    def test_hole_subtracted(self):
+        outer = [[100.0, 13.0], [100.2, 13.0], [100.2, 13.2], [100.0, 13.2], [100.0, 13.0]]
+        hole = [[100.05, 13.05], [100.15, 13.05], [100.15, 13.15], [100.05, 13.15], [100.05, 13.05]]
+        with_hole = polygon_area_km2([outer, hole])
+        without = polygon_area_km2([outer])
+        assert with_hole < without
+
+    def test_empty_coords_zero(self):
+        assert polygon_area_km2([]) == 0.0
+
+
+# ── validate_drawn_polygon (รวม guard ที่ 3 endpoint ใช้ร่วมกัน) ──────────────
+class TestValidateDrawnPolygon:
+    _SQUARE = {"type": "Polygon", "coordinates": [[
+        [100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]]}
+
+    def test_valid_returns_area(self):
+        area = validate_drawn_polygon(self._SQUARE)
+        assert 114 < area < 126   # ~120 km² (เหมือน TestPolygonArea)
+
+    def test_non_polygon_raises(self):
+        with pytest.raises(ValueError, match="Polygon"):
+            validate_drawn_polygon({"type": "Point", "coordinates": [100, 13]})
+
+    def test_too_few_points_raises(self):
+        tri = {"type": "Polygon", "coordinates": [[[100.0, 13.0], [100.1, 13.0], [100.0, 13.0]]]}
+        with pytest.raises(ValueError, match="3 จุด"):
+            validate_drawn_polygon(tri)
+
+    def test_too_large_raises(self):
+        huge = {"type": "Polygon", "coordinates": [[
+            [97.0, 6.0], [106.0, 6.0], [106.0, 20.0], [97.0, 20.0], [97.0, 6.0]]]}
+        with pytest.raises(ValueError, match="ใหญ่เกินไป"):
+            validate_drawn_polygon(huge)

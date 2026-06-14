@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 from dependencies import (supa_call, require_admin,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR,
                           YearParam, WHO_STANDARD_M2)
-from routers import ndvi, lst, recommend, maps
+from routers import ndvi, lst, recommend, maps, saved
 from schemas import RankingResponse, TimelapseResponse
 
 GEE_PROJECT = os.getenv("GEE_PROJECT")
@@ -58,11 +58,12 @@ if not IS_PRODUCTION:
 app = FastAPI()
 # CORS — จำกัดเฉพาะ method/header ที่ API ใช้จริง (least privilege)
 # ไม่เปิด allow_credentials เพราะ API ใช้ token header ไม่ใช่ cookie
+# POST ใช้สำหรับ /analysis/custom-area (ส่ง GeoJSON polygon ใน body)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "DELETE", "OPTIONS"],
-    allow_headers=["X-Admin-Token", "Content-Type"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["X-Admin-Token", "X-Owner-Token", "Content-Type"],
 )
 
 # Rate limit แบบ global ต่อ IP — กันใช้ผิดประเภท + GEE quota หมด
@@ -90,6 +91,7 @@ app.include_router(ndvi.router)
 app.include_router(lst.router)
 app.include_router(recommend.router)
 app.include_router(maps.router)
+app.include_router(saved.router)
 
 
 @app.get("/health")

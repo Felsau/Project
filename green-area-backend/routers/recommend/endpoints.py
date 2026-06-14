@@ -12,11 +12,13 @@ import logging
 
 import ee
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from dependencies import (supa_call, internal_error,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
-                          CURRENT_YEAR, YearParam)
+                          CURRENT_YEAR, YEAR_MIN, YEAR_MAX, YearParam, WeightParam)
 from impact import estimate_impact
+from polygon_utils import validate_drawn_polygon
 
 from .scoring import (W_NDVI, W_LST, W_POP,
                       normalize_weights, assert_imagery_available,
@@ -133,7 +135,8 @@ def _run_recommendation(province_name: str, district_name: str | None,
 # ── Province-level recommendation ────────────────────────────────────────────
 @router.get("/recommend/{province_name}")
 def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
-                       w_ndvi: float = W_NDVI, w_lst: float = W_LST, w_pop: float = W_POP):
+                       w_ndvi: WeightParam = W_NDVI, w_lst: WeightParam = W_LST,
+                       w_pop: WeightParam = W_POP):
     raw_geom = PROVINCE_GEOMETRIES.get(province_name)
     if not raw_geom:
         raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
@@ -144,9 +147,72 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
 @router.get("/recommend/{province_name}/districts/{district_name}")
 def recommend_district(province_name: str, district_name: str,
                        year: YearParam = CURRENT_YEAR,
-                       w_ndvi: float = W_NDVI, w_lst: float = W_LST, w_pop: float = W_POP):
+                       w_ndvi: WeightParam = W_NDVI, w_lst: WeightParam = W_LST,
+                       w_pop: WeightParam = W_POP):
     raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
     if not raw_geom:
         raise HTTPException(status_code=404,
             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
     return _run_recommendation(province_name, district_name, raw_geom, year, w_ndvi, w_lst, w_pop)
+
+
+# ── Custom-area recommendation (user-drawn polygon) ──────────────────────────
+class CustomAreaRecommendRequest(BaseModel):
+    """Body ของ POST /recommend/custom-area"""
+    geometry: dict = Field(..., description="GeoJSON Polygon geometry")
+    year: int = Field(default=CURRENT_YEAR, ge=YEAR_MIN, le=YEAR_MAX,
+                      description=f"ปี ค.ศ. ระหว่าง {YEAR_MIN}–{YEAR_MAX}")
+    # ใบ้จังหวัด (centroid ตกในจังหวัดไหน) — ใช้เลือกพันธุ์ไม้ตามภาคเท่านั้น
+    province: str | None = Field(default=None, description="ชื่อจังหวัด (อังกฤษ) สำหรับเลือกพันธุ์ไม้")
+    w_ndvi: float = Field(default=W_NDVI, ge=0, le=1)
+    w_lst: float = Field(default=W_LST, ge=0, le=1)
+    w_pop: float = Field(default=W_POP, ge=0, le=1)
+
+
+@router.post("/recommend/custom-area")
+def recommend_custom_area(req: CustomAreaRecommendRequest):
+    """AI Recommend (priority heatmap + top-10 + impact + พันธุ์ไม้) บน polygon ที่ผู้ใช้
+    วาดเอง — คำนวณสดทุกครั้ง (ไม่ cache เพราะ geometry ไม่ซ้ำ) · พันธุ์ไม้เลือกตามภาค
+    ของจังหวัดที่ centroid ตกอยู่ (ส่งมาใน req.province) — ถ้าไม่รู้ก็คืน species ว่าง"""
+    try:
+        area_km2 = validate_drawn_polygon(req.geometry)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    w_ndvi, w_lst, w_pop = normalize_weights(req.w_ndvi, req.w_lst, req.w_pop)
+    # province ใช้แค่เลือกพันธุ์ไม้ — ถ้าไม่อยู่ใน whitelist ก็ข้าม (คืน species ว่าง)
+    province = req.province if req.province in PROVINCE_GEOMETRIES else None
+    species_info = (get_recommended_species(province) if province
+                    else {"region": None, "species": []})
+
+    logger.info("⏳ Custom-area recommend: %.1f km² · ปี %d (w=%.2f/%.2f/%.2f)",
+                area_km2, req.year, w_ndvi, w_lst, w_pop)
+    try:
+        geom = ee.Geometry(req.geometry)
+        assert_imagery_available(geom, req.year)
+        priority, _, _, _ = compute_priority(geom, req.year, w_ndvi, w_lst, w_pop)
+        tile_url = get_heatmap_url(priority)
+        top = get_top_locations(priority, geom, n=10)
+        plantable_m2 = compute_plantable_area_m2(priority, geom)
+        impact = estimate_impact(plantable_m2, species_info.get("species", []))
+        return {
+            "year": req.year,
+            "area_km2": round(area_km2, 2),
+            "province": province,
+            "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
+            "tile_url": tile_url,
+            "top_locations": top,
+            "recommended_species": species_info,
+            "impact": impact,
+        }
+    except HTTPException:
+        raise
+    except ee.EEException as ee_err:
+        logger.warning("⚠️ Custom-area recommend GEE failed (ปี %d): %s", req.year, ee_err)
+        raise HTTPException(status_code=422, detail=(
+            f"คำนวณ priority สำหรับปี {req.year} ไม่สำเร็จ — "
+            "ข้อมูลภาพถ่ายดาวเทียมอาจไม่ครอบคลุมพื้นที่นี้ ลองปีก่อนหน้า"
+        ))
+    except Exception:
+        logger.error("❌ Custom-area recommend error (ปี %d)", req.year, exc_info=True)
+        raise internal_error()

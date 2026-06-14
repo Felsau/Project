@@ -19,8 +19,11 @@ import { useCoolingData } from './hooks/useCoolingData';
 import { useCoverageCompute } from './hooks/useCoverageCompute';
 import { useRasterOverlay } from './hooks/useRasterOverlay';
 import { useSwipeCompare } from './hooks/useSwipeCompare';
+import { useAreaTools }   from './hooks/useAreaTools';
 import { buildMapLayers }  from './utils/mapLayers';
 import { swipeLayers }     from './utils/mapLayers/swipeLayer';
+import { drawLayers }      from './utils/mapLayers/drawLayer';
+import { recommendLayers } from './utils/mapLayers/recommendLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
 import MapTooltip from './components/MapTooltip';
@@ -29,6 +32,8 @@ import Toast      from './components/Toast';
 import TimelapsePlayer from './components/TimelapsePlayer';
 import AboutModal from './components/AboutModal';
 import Landing from './components/Landing';
+import DrawControl from './components/DrawControl';
+import SavedAreasPanel from './components/SavedAreasPanel';
 import { pushError } from './utils/toast';
 
 // Stable empty layer array so panning while swipe is OFF doesn't churn the
@@ -51,7 +56,8 @@ function App() {
   const [theme, setTheme] = useState(() => {
     const saved = typeof localStorage !== 'undefined' && localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') return saved;
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    // Default to light; users can switch to dark via the toggle (persisted).
+    return 'light';
   });
 
   // Landing gate — shown once per browser session. Shared deep-links
@@ -82,6 +88,11 @@ function App() {
   const coverage = useCoverageCompute({ setNdviCache });
   const raster = useRasterOverlay();
   const swipe = useSwipeCompare();
+  // วาดพื้นที่เอง + บันทึกพื้นที่ — orchestration อยู่ใน useAreaTools
+  const {
+    draw, savedAreas, savedPanelOpen, setSavedPanelOpen,
+    handleMapClick, resolveProvince, toggleSavedPanel, handleSaveArea, handleLoadSaved,
+  } = useAreaTools({ thailandData, setViewState });
   // are BOTH swipe years' tiles fully rendered? (used to show "loading" until
   // ready, so dragging happens on cached tiles = instant GPU re-clip)
   const [swipeTilesReady, setSwipeTilesReady] = useState({ a: false, b: false });
@@ -247,6 +258,7 @@ function App() {
     cooling.resetCooling();
     raster.clearOverlay();
     swipe.reset();
+    draw.reset();
     setSidebarTab('stats');
     setViewState({
       ...INITIAL_VIEW_STATE,
@@ -259,7 +271,10 @@ function App() {
       compare.resetCompare, recommend.resetRecommend]);
 
   const handleViewStateChange = useCallback(({ viewState: vs }) => setViewState(vs), []);
-  const getCursor = useCallback(({ isHovering }) => (isHovering ? 'pointer' : 'default'), []);
+  // draw mode → crosshair (กำลังปักหมุด); ปกติ → pointer เมื่อ hover พื้นที่
+  const getCursor = useCallback(
+    ({ isHovering }) => (draw.drawActive ? 'crosshair' : isHovering ? 'pointer' : 'default'),
+    [draw.drawActive]);
 
   // Drag the swipe divider — convert pointer x to a 0–1 split fraction.
   const { setSplit: setSwipeSplit } = swipe;
@@ -371,6 +386,8 @@ function App() {
     recommendVisible: recommend.recommendVisible,
     rasterTileInfo:   raster.tileInfo,
     swipeActive:      swipe.active,
+    // draw mode → ปิด picking ของ province/district เพื่อให้คลิกปักหมุดแทนการเลือก
+    drawActive:       draw.drawActive,
     // Intentional partial deps — only re-layer on data/selection/zoom changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
@@ -380,7 +397,7 @@ function App() {
     showingDistricts,
     viewState.zoom,
     recommend.recommendData, recommend.recommendVisible,
-    raster.tileInfo, swipe.active,
+    raster.tileInfo, swipe.active, draw.drawActive,
   ]);
 
   // Swipe layers built separately so panning (which changes viewportBounds) only
@@ -396,8 +413,23 @@ function App() {
     [swipe.active, swipe.tileA, swipe.tileB, swipe.diffTile, viewportBounds, swipe.split, onSwipeTileLoad]
   );
 
-  const layers = useMemo(() => [...baseLayers, ...swipeLayersMemo],
-                         [baseLayers, swipeLayersMemo]);
+  // Draw overlay built separately so adding a vertex only rebuilds the polygon,
+  // not the whole choropleth.
+  const drawLayersMemo = useMemo(
+    () => drawLayers({ points: draw.points }), [draw.points]);
+
+  // AI Recommend on the drawn area — reuse the province recommend layers
+  // (heatmap tiles + top-spot markers) driven by the draw hook's result.
+  const drawRecommendLayersMemo = useMemo(
+    () => (draw.recommendResult
+      ? recommendLayers({ recommendData: draw.recommendResult,
+                          recommendVisible: draw.recommendVisible, setTooltip })
+      : EMPTY_LAYERS),
+    [draw.recommendResult, draw.recommendVisible]);
+
+  const layers = useMemo(
+    () => [...baseLayers, ...swipeLayersMemo, ...drawRecommendLayersMemo, ...drawLayersMemo],
+    [baseLayers, swipeLayersMemo, drawRecommendLayersMemo, drawLayersMemo]);
 
   const sidebarData = {
     provinceList,
@@ -511,6 +543,7 @@ function App() {
         <DeckGL
           viewState={viewState}
           onViewStateChange={handleViewStateChange}
+          onClick={handleMapClick}
           controller={true}
           layers={layers}
           getCursor={getCursor}
@@ -603,7 +636,28 @@ function App() {
             aria-label="รีเซ็ตมุมมอง"
             title="รีเซ็ตมุมมอง"
           >⟲</button>
+          <button
+            className="map-btn"
+            data-active={draw.drawActive || !!draw.result}
+            onClick={() => (draw.drawActive || draw.result ? draw.reset() : draw.startDraw())}
+            aria-label="วาดพื้นที่วิเคราะห์เอง"
+            title="วาดพื้นที่วิเคราะห์เอง"
+          >✏️</button>
+          <button
+            className="map-btn"
+            data-active={savedPanelOpen}
+            onClick={toggleSavedPanel}
+            aria-label="พื้นที่ที่บันทึกไว้"
+            title="พื้นที่ที่บันทึกไว้"
+          >📁</button>
         </div>
+
+        <DrawControl draw={draw} year={CURRENT_YEAR}
+          resolveProvince={resolveProvince}
+          onSave={handleSaveArea} saving={savedAreas.saving} />
+
+        <SavedAreasPanel open={savedPanelOpen} onClose={() => setSavedPanelOpen(false)}
+          saved={savedAreas} onLoad={handleLoadSaved} />
 
         <TimelapsePlayer timelapse={timelapse} />
       </div>

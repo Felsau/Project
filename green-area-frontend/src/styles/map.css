@@ -52,6 +52,7 @@
 
 .map-btn:last-child { border-bottom: none; }
 .map-btn:hover { background: var(--ink-8); color: var(--ink-0); }
+.map-btn[data-active="true"] { background: var(--accent); color: #fff; }
 
 /* NDVI color key — floating, bottom-left of the map */
 .legend-card {
@@ -233,6 +234,175 @@
 }
 .swipe-yearbadge--a { left: 50%; transform: translateX(calc(-100% - 22px)); }
 .swipe-yearbadge--b { left: 50%; transform: translateX(22px); }
+
+/* Draw-your-own-area — floating panel, top-centre of the map (doubles as the
+   drawing toolbar and the result card). Sits clear of overlay-toggle (top-left)
+   and map-controls (top-right). */
+.draw-panel {
+  position: absolute;
+  top: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: min(330px, calc(100% - 24px));
+  max-height: calc(100vh - 2 * var(--s-3) - 40px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--rad);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  padding: 10px 12px;
+}
+
+.draw-panel__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.draw-panel__count {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-4);
+}
+
+.draw-panel__hint {
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.draw-panel__hint--busy { color: var(--accent); }
+
+.draw-panel__btns { display: flex; gap: 6px; }
+
+.draw-panel__btns .overlay-btn {
+  flex: 1;
+  border: 1px solid var(--rule);
+  border-radius: var(--rad-sm);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.draw-panel__btns .overlay-btn:disabled {
+  color: var(--ink-4);
+  cursor: not-allowed;
+}
+
+/* Save row inside the draw result card */
+.draw-save { display: flex; gap: 6px; }
+.draw-save__input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-xs);
+  padding: 5px 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--rad-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+}
+.draw-save .overlay-btn {
+  border: 1px solid var(--rule);
+  border-radius: var(--rad-sm);
+  white-space: nowrap;
+}
+
+/* Saved-areas list — floating, top-right under the map-controls stack */
+.saved-panel {
+  position: absolute;
+  top: calc(var(--s-3) + 108px);
+  right: var(--s-3);
+  z-index: 4;
+  width: min(270px, calc(100% - 24px));
+  max-height: calc(100vh - 2 * var(--s-3) - 120px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--rad);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  padding: 9px 11px;
+}
+
+.saved-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.saved-panel__title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.saved-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.saved-item { display: flex; align-items: stretch; gap: 4px; }
+
+.saved-item__main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--rad-sm);
+  cursor: pointer;
+}
+.saved-item__main:hover { background: var(--ink-8); }
+
+.saved-item__label {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-0);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.saved-item__badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.saved-item__meta {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-family: var(--mono);
+}
+
+.saved-item__del {
+  width: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--rad-sm);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 12px;
+}
+.saved-item__del:hover { background: var(--ink-8); color: var(--crit, #d73027); }
 
 /* Map is short on phones — hide the key to keep it uncluttered */
 @media (max-width: 900px) {

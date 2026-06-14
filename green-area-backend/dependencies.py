@@ -41,6 +41,14 @@ YearParam = Annotated[int, Query(
     description=f"ปี ค.ศ. ระหว่าง {YEAR_MIN}–{YEAR_MAX}",
 )]
 
+# น้ำหนัก priority (NDVI/LST/pop) — บังคับ 0–1 ตั้งแต่ชั้น validation กัน
+# ค่าติดลบที่ผ่าน normalize_weights() (total > 0) แล้วได้ priority image พิกล
+# โดยไม่มี error · ค่าจะถูก normalize ให้รวมเป็น 1 อีกชั้นใน scoring
+WeightParam = Annotated[float, Query(
+    ge=0, le=1,
+    description="น้ำหนัก 0–1 (normalize รวมเป็น 1 อัตโนมัติ)",
+)]
+
 
 def require_admin(x_admin_token: str | None = Header(default=None)):
     if not ADMIN_TOKEN:

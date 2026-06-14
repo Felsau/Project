@@ -386,3 +386,189 @@ class TestCooling:
         assert d["n_districts"] == 0
         assert d["regression"] is None
         assert "ข้อมูลไม่พอ" in d["interpretation"]
+
+
+# ── POST /analysis/custom-area ───────────────────────────────────────────────
+# ทดสอบเฉพาะ validation path ที่ตอบกลับ "ก่อน" แตะ GEE — compute path จริง
+# (NDVI/LST/WorldPop) พึ่ง Earth Engine จึงไม่ครอบคลุมใน unit test ชุดนี้
+class TestCustomArea:
+    _SQUARE = [[100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]
+
+    def _body(self, ring, year=None):
+        geom = {"type": "Polygon", "coordinates": [ring]}
+        body = {"geometry": geom}
+        if year is not None:
+            body["year"] = year
+        return body
+
+    def test_missing_geometry_returns_422(self, client):
+        # ขาด field geometry → Pydantic validation 422
+        c, _ = client
+        r = c.post("/analysis/custom-area", json={"year": 2024})
+        assert r.status_code == 422
+
+    def test_non_polygon_returns_400(self, client):
+        c, _ = client
+        r = c.post("/analysis/custom-area",
+                   json={"geometry": {"type": "Point", "coordinates": [100.0, 13.0]}})
+        assert r.status_code == 400
+        assert "Polygon" in r.json()["detail"]
+
+    def test_too_few_points_returns_400(self, client):
+        c, _ = client
+        tri = [[100.0, 13.0], [100.1, 13.0], [100.0, 13.0]]  # 2 จุดจริง
+        r = c.post("/analysis/custom-area", json=self._body(tri))
+        assert r.status_code == 400
+        assert "3 จุด" in r.json()["detail"]
+
+    def test_year_out_of_range_returns_422(self, client):
+        c, _ = client
+        r = c.post("/analysis/custom-area", json=self._body(self._SQUARE, year=1500))
+        assert r.status_code == 422
+
+    def test_area_too_large_returns_400(self, client):
+        # กล่องครอบเกือบทั้งประเทศ → เกิน MAX_AREA_KM2
+        c, _ = client
+        huge = [[97.0, 6.0], [106.0, 6.0], [106.0, 20.0], [97.0, 20.0], [97.0, 6.0]]
+        r = c.post("/analysis/custom-area", json=self._body(huge))
+        assert r.status_code == 400
+        assert "ใหญ่เกินไป" in r.json()["detail"]
+
+    def test_out_of_range_coordinate_returns_400(self, client):
+        c, _ = client
+        bad = [[200.0, 13.0], [100.1, 13.0], [100.1, 13.1], [200.0, 13.0]]
+        r = c.post("/analysis/custom-area", json=self._body(bad))
+        assert r.status_code == 400
+
+
+# ── POST /recommend/custom-area ──────────────────────────────────────────────
+# validation path เท่านั้น (ก่อนแตะ GEE) — เหมือน TestCustomArea
+class TestCustomAreaRecommend:
+    _SQUARE = [[100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]
+
+    def _body(self, ring, **extra):
+        return {"geometry": {"type": "Polygon", "coordinates": [ring]}, **extra}
+
+    def test_missing_geometry_returns_422(self, client):
+        c, _ = client
+        r = c.post("/recommend/custom-area", json={"year": 2024})
+        assert r.status_code == 422
+
+    def test_non_polygon_returns_400(self, client):
+        c, _ = client
+        r = c.post("/recommend/custom-area",
+                   json={"geometry": {"type": "LineString", "coordinates": [[100, 13], [100.1, 13]]}})
+        assert r.status_code == 400
+        assert "Polygon" in r.json()["detail"]
+
+    def test_too_few_points_returns_400(self, client):
+        c, _ = client
+        tri = [[100.0, 13.0], [100.1, 13.0], [100.0, 13.0]]
+        r = c.post("/recommend/custom-area", json=self._body(tri))
+        assert r.status_code == 400
+        assert "3 จุด" in r.json()["detail"]
+
+    def test_area_too_large_returns_400(self, client):
+        c, _ = client
+        huge = [[97.0, 6.0], [106.0, 6.0], [106.0, 20.0], [97.0, 20.0], [97.0, 6.0]]
+        r = c.post("/recommend/custom-area", json=self._body(huge))
+        assert r.status_code == 400
+        assert "ใหญ่เกินไป" in r.json()["detail"]
+
+    def test_weight_out_of_range_returns_422(self, client):
+        # น้ำหนัก > 1 → Pydantic Field validation 422 ก่อนแตะ GEE
+        c, _ = client
+        r = c.post("/recommend/custom-area", json=self._body(self._SQUARE, w_ndvi=5))
+        assert r.status_code == 422
+
+    def test_year_out_of_range_returns_422(self, client):
+        c, _ = client
+        r = c.post("/recommend/custom-area", json=self._body(self._SQUARE, year=1500))
+        assert r.status_code == 422
+
+
+# ── saved-areas CRUD (/saved-areas) ──────────────────────────────────────────
+class TestSavedAreas:
+    _SQUARE = [[100.0, 13.0], [100.1, 13.0], [100.1, 13.1], [100.0, 13.1], [100.0, 13.0]]
+
+    def _body(self, ring, **extra):
+        return {"geometry": {"type": "Polygon", "coordinates": [ring]}, **extra}
+
+    # ── validation (ก่อนแตะ DB) ──
+    def test_create_missing_geometry_returns_422(self, client):
+        c, _ = client
+        r = c.post("/saved-areas", json={"year": 2024})
+        assert r.status_code == 422
+
+    def test_create_non_polygon_returns_400(self, client):
+        c, _ = client
+        r = c.post("/saved-areas", json={"geometry": {"type": "Point", "coordinates": [100, 13]}})
+        assert r.status_code == 400
+
+    def test_create_too_large_returns_400(self, client):
+        c, _ = client
+        huge = [[97.0, 6.0], [106.0, 6.0], [106.0, 20.0], [97.0, 20.0], [97.0, 6.0]]
+        r = c.post("/saved-areas", json=self._body(huge))
+        assert r.status_code == 400
+
+    # ── create + list (mock DB) ──
+    def test_create_returns_row_without_owner_token(self, client, monkeypatch):
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([{
+                "id": 7, "label": "พื้นที่ทดสอบ", "year": 2024, "area_km2": 120.0,
+                "province": None, "geometry": {"type": "Polygon", "coordinates": [self._SQUARE]},
+                "owner_token": "tok-abc", "created_at": "2024-01-01T00:00:00Z",
+            }]))
+        r = c.post("/saved-areas", json=self._body(self._SQUARE, label="พื้นที่ทดสอบ"),
+                   headers={"X-Owner-Token": "tok-abc"})
+        assert r.status_code == 200
+        d = r.json()
+        assert d["id"] == 7
+        assert "owner_token" not in d        # ห้าม leak
+        assert d["mine"] is True             # token ตรง → ของฉัน
+
+    def test_list_marks_mine_and_hides_token(self, client, monkeypatch):
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([
+                {"id": 1, "label": "A", "owner_token": "mine", "geometry": {}},
+                {"id": 2, "label": "B", "owner_token": "other", "geometry": {}},
+            ]))
+        r = c.get("/saved-areas", headers={"X-Owner-Token": "mine"})
+        assert r.status_code == 200
+        rows = r.json()["data"]
+        assert all("owner_token" not in row for row in rows)
+        assert rows[0]["mine"] is True
+        assert rows[1]["mine"] is False
+
+    # ── delete authorization ──
+    def test_delete_not_found_returns_404(self, client, monkeypatch):
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call", lambda fn, **kw: _fake_response([]))
+        r = c.delete("/saved-areas/999", headers={"X-Owner-Token": "tok"})
+        assert r.status_code == 404
+
+    def test_delete_wrong_owner_returns_403(self, client, monkeypatch):
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([{"id": 1, "owner_token": "someone-else"}]))
+        r = c.delete("/saved-areas/1", headers={"X-Owner-Token": "tok"})
+        assert r.status_code == 403
+
+    def test_delete_owner_match_succeeds(self, client, monkeypatch):
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([{"id": 1, "owner_token": "tok"}]))
+        r = c.delete("/saved-areas/1", headers={"X-Owner-Token": "tok"})
+        assert r.status_code == 200
+        assert r.json()["id"] == 1
+
+    def test_delete_admin_override_succeeds(self, client, monkeypatch):
+        # owner ไม่ตรง แต่ admin token ตรง (fixture ตั้ง ADMIN_TOKEN=test-token) → ลบได้
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([{"id": 1, "owner_token": "someone-else"}]))
+        r = c.delete("/saved-areas/1",
+                     headers={"X-Owner-Token": "tok", "X-Admin-Token": "test-token"})
+        assert r.status_code == 200

@@ -24,7 +24,7 @@ const NO_DATA_FILL = [225, 229, 226, 90];
 export const districtLayers = (ctx) => {
   const {
     showingDistricts, districtFeatures, districtCache,
-    selectedProvinceEN, selectedDistrictEN, zoom, rasterActive,
+    selectedProvinceEN, selectedDistrictEN, zoom, rasterActive, drawActive,
     setSelectedDistrict, setSelectedDistrictEN, setDistrictArea,
     setSidebarTab, fetchDistrictNDVI, setTooltip,
   } = ctx;
@@ -62,8 +62,9 @@ export const districtLayers = (ctx) => {
       getLineWidth: (f) => (f.properties.name === selectedDistrictEN ? 2.5 : 0.8),
       lineWidthUnits: 'pixels',
       lineWidthMinPixels: 0.8,
-      pickable: true,
-      autoHighlight: !rasterActive,
+      // draw mode → ปิด picking เพื่อให้คลิกบนแผนที่ปักหมุดแทนการเลือกอำเภอ
+      pickable: !drawActive,
+      autoHighlight: !rasterActive && !drawActive,
       highlightColor: [26, 115, 232, 90],
       onClick: ({ object }) => {
         if (!object) return;

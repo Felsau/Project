@@ -42,6 +42,7 @@
   - `002_constraints_and_cache_meta.sql` (CHECK constraints + cache_version + index)
   - `003_add_impact_column.sql` (เพิ่ม column impact ใน planting_recommendations)
   - `004_drop_unused_expires_at.sql` (ลบ expires_at ที่เลิกใช้ — tile URL ย้ายไป in-process cache)
+  - `005_create_saved_areas.sql` (ตาราง saved_areas — บันทึก polygon ที่วาดเอง + ผลวิเคราะห์)
 - เอา `URL` และ `service_role` key จากหน้า Project Settings → API
 
 ### 2) Backend

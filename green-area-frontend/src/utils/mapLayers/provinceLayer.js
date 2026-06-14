@@ -11,7 +11,7 @@ const lstElevation = (v) => Math.max(0, Math.min(1, (v - 20) / 25)) * 30000;
 export const provinceLayers = (ctx) => {
   const {
     thailandData, ndviCache, selectedProvinceEN, showingDistricts,
-    selectProvince, setTooltip, rasterActive, timelapseMetric,
+    selectProvince, setTooltip, rasterActive, timelapseMetric, drawActive,
   } = ctx;
   if (!thailandData) return [];
 
@@ -55,9 +55,10 @@ export const provinceLayers = (ctx) => {
         return [42, 74, 42, 160];
       },
       lineWidthMinPixels: 1,
-      pickable: true,
+      // draw mode → ปิด picking เพื่อให้คลิกบนแผนที่ปักหมุดแทนการเลือกจังหวัด
+      pickable: !drawActive,
       // don't repaint a highlight over the raster on hover
-      autoHighlight: !showingDistricts && !rasterActive,
+      autoHighlight: !showingDistricts && !rasterActive && !drawActive,
       highlightColor: [26, 115, 232, 80],
       onClick: ({ object }) => {
         if (!object) return;

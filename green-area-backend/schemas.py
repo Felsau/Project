@@ -83,6 +83,29 @@ class RankingResponse(BaseModel):
     data: list[RankingRow]
 
 
+# ── Custom area (user-drawn polygon) ─────────────────────────────────────────
+class CustomAreaResponse(BaseModel):
+    """ผลวิเคราะห์ polygon ที่ผู้ใช้วาดเอง — NDVI/พื้นที่สีเขียว/ประชากร/LST.
+    ประชากรมาจาก WorldPop sum ภายในพื้นที่จริง (ไม่ใช่ค่าทั้งจังหวัด)"""
+    year: int
+    area_km2: float
+    ndvi_mean: Optional[float] = None
+    ndvi_min: Optional[float] = None
+    ndvi_max: Optional[float] = None
+    green_area_pct: Optional[float] = None
+    green_area_km2: Optional[float] = None
+    dense_area_pct: Optional[float] = None
+    dense_area_km2: Optional[float] = None
+    total_area_km2: Optional[float] = None
+    population: Optional[int] = None
+    green_area_m2_per_person: Optional[float] = None
+    who_status: Optional[str] = None
+    lst_mean: Optional[float] = None
+    lst_min: Optional[float] = None
+    lst_max: Optional[float] = None
+    worldpop_year: int
+
+
 # ── Timelapse ────────────────────────────────────────────────────────────────
 class TimelapseResponse(BaseModel):
     """ค่า annual (NDVI หรือ LST) ของทุกจังหวัด ใน range ที่กำหนด — เล่นเป็น

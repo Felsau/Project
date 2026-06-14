@@ -119,11 +119,18 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
                            .get('NDVI').getInfo())
 
         # Population ภายใน built-up (WorldPop 100m, ปี WORLDPOP_YEAR)
-        pop_img = (ee.ImageCollection('WorldPop/GP/100m/pop')
+        # ถ้าไม่มี image สำหรับ THA+ปีนี้ .first() = null → ee.Image(null) พังด้วย
+        # error คลุมเครือ ('input may not be null') แล้วกลายเป็น 500 · เช็ค size
+        # ก่อนเพื่อตอบ 503 ที่บอกวิธีแก้ (ตั้ง WORLDPOP_YEAR) เหมือนใน /recommend
+        pop_col = (ee.ImageCollection('WorldPop/GP/100m/pop')
                    .filter(ee.Filter.eq('country', 'THA'))
-                   .filter(ee.Filter.eq('year', WORLDPOP_YEAR))
-                   .first())
-        pop_urban = (ee.Image(pop_img).select('population')
+                   .filter(ee.Filter.eq('year', WORLDPOP_YEAR)))
+        if pop_col.size().getInfo() == 0:
+            raise HTTPException(status_code=503, detail=(
+                f"WorldPop ปี {WORLDPOP_YEAR} ไม่มีในระบบ — ตั้งค่า WORLDPOP_YEAR "
+                "เป็นปีที่มีข้อมูลใน GEE catalog (ปกติ 2000–2020)"
+            ))
+        pop_urban = (ee.Image(pop_col.first()).select('population')
                      .updateMask(built_up)
                      .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
                                    scale=100, maxPixels=1e10, bestEffort=True)
