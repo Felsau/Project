@@ -28,7 +28,7 @@
 
 - **Frontend** ([green-area-frontend/](green-area-frontend/)) — React 19, DeckGL 3D extrusion, MapLibre GL, jsPDF + html2canvas รายงาน
 - **Backend** ([green-area-backend/](green-area-backend/)) — FastAPI, supabase-py, earthengine-api, matplotlib (thumbnails)
-- **Cache** — ตาราง Supabase 11 ตาราง (ดู [migrations/000_initial_schema.sql](green-area-backend/migrations/000_initial_schema.sql)) เพื่อหลีกเลี่ยง GEE compute ซ้ำซ้อน
+- **Database** — Supabase (Postgres) 14 ตาราง: cache 11 ตาราง (ดู [migrations/000_initial_schema.sql](green-area-backend/migrations/000_initial_schema.sql)) เพื่อหลีกเลี่ยง GEE compute ซ้ำซ้อน + ตารางอ้างอิง `provinces` / `districts` (normalize ชื่อไทย/ภาค/พื้นที่อำเภอ) + `saved_areas` (พื้นที่ที่ผู้ใช้วาดเอง)
 
 ---
 
@@ -43,6 +43,8 @@
   - `003_add_impact_column.sql` (เพิ่ม column impact ใน planting_recommendations)
   - `004_drop_unused_expires_at.sql` (ลบ expires_at ที่เลิกใช้ — tile URL ย้ายไป in-process cache)
   - `005_create_saved_areas.sql` (ตาราง saved_areas — บันทึก polygon ที่วาดเอง + ผลวิเคราะห์)
+  - `006_create_provinces.sql` (ตารางอ้างอิง provinces + seed 77 จังหวัด + FK — normalize ชื่อไทย/ภาค)
+  - `007_create_districts.sql` (ตารางอ้างอิง districts + seed 928 อำเภอ + พื้นที่ + composite FK)
 - เอา `URL` และ `service_role` key จากหน้า Project Settings → API
 
 ### 2) Backend

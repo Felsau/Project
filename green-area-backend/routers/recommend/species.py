@@ -2,7 +2,15 @@
 
 คัดเฉพาะที่ปลูกง่าย ทนสภาพท้องถิ่น และให้ร่มเงา/ฟื้นฟูดี — ใช้ใน recommend endpoint
 เพื่อแนะนำพันธุ์ไม้ที่เหมาะกับสภาพภูมิอากาศ/ดินของแต่ละภาค
+
+ภาค (region) ของแต่ละจังหวัดอ่านจากตาราง `provinces` (single source of truth หลัง
+migration 006) ผ่าน `_region_for()` ที่ cache ผลไว้ · `PROVINCE_REGION` ด้านล่างเป็น
+ทั้ง seed ของตารางนั้นและ fallback กรณี DB ยังไม่มีข้อมูล/เชื่อมไม่ได้
 """
+import logging
+from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 # จับจังหวัด → ภาค (ใช้แบ่งตามภูมิอากาศ/ดินที่เหมาะกับพันธุ์ไม้)
 THAI_REGIONS = {
@@ -178,9 +186,31 @@ TREE_SPECIES_BY_REGION = {
 }
 
 
+@lru_cache(maxsize=1)
+def _db_region_map() -> dict:
+    """โหลด {name_en: region} จากตาราง provinces (normalized source) — cache ไว้ครั้งเดียว.
+
+    คืน {} ถ้า DB ยังไม่มีข้อมูล/migration 006 ยังไม่รัน/เชื่อมไม่ได้ → caller fallback
+    ไป PROVINCE_REGION (hardcoded) · import supa_call แบบ lazy กัน import-time DB coupling
+    """
+    try:
+        from dependencies import supa_call
+        rows = supa_call(lambda s: s.table("provinces")
+                         .select("name_en,region").execute()).data
+        return {r["name_en"]: r["region"] for r in rows} if rows else {}
+    except Exception as e:
+        logger.warning("⚠️  provinces lookup failed — fallback to hardcoded region map: %s", e)
+        return {}
+
+
+def _region_for(province_name: str) -> str | None:
+    """ภาคของจังหวัด — DB (provinces) เป็นหลัก, fallback hardcoded PROVINCE_REGION"""
+    return _db_region_map().get(province_name) or PROVINCE_REGION.get(province_name)
+
+
 def get_recommended_species(province_name: str):
     """คืนพันธุ์ไม้แนะนำตามภาคของจังหวัด พร้อม metadata ของภาคนั้น"""
-    region = PROVINCE_REGION.get(province_name)
+    region = _region_for(province_name)
     if not region:
         return {"region": None, "species": []}
     return {

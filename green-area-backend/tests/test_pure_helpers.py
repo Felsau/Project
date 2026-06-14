@@ -8,6 +8,8 @@ import pytest
 # Import จาก backend modules — conftest.py ตั้ง sys.path ให้แล้ว
 from routers.ndvi import _is_stale, compute_who_status
 from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP
+from routers.recommend import species as species_mod
+from routers.recommend.species import get_recommended_species
 from polygon_utils import (
     validate_polygon_geometry, polygon_area_km2, validate_drawn_polygon)
 from dependencies import _validate_geojson_path, CURRENT_CACHE_VERSION
@@ -309,3 +311,22 @@ class TestValidateDrawnPolygon:
             [97.0, 6.0], [106.0, 6.0], [106.0, 20.0], [97.0, 20.0], [97.0, 6.0]]]}
         with pytest.raises(ValueError, match="ใหญ่เกินไป"):
             validate_drawn_polygon(huge)
+
+
+# ── get_recommended_species — region จาก provinces (DB) + fallback hardcoded ──
+class TestRecommendedSpecies:
+    def test_known_province_fallback_region(self, monkeypatch):
+        # DB ว่าง (migration ยังไม่รัน) → ใช้ PROVINCE_REGION hardcoded
+        monkeypatch.setattr(species_mod, "_db_region_map", lambda: {})
+        out = get_recommended_species("Chiang Mai")
+        assert out["region"] == "เหนือ"
+        assert len(out["species"]) > 0
+
+    def test_unknown_province_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(species_mod, "_db_region_map", lambda: {})
+        assert get_recommended_species("Atlantis") == {"region": None, "species": []}
+
+    def test_db_region_takes_precedence(self, monkeypatch):
+        # provinces ใน DB ให้ภาคต่างจาก hardcoded → ต้องใช้ค่าจาก DB
+        monkeypatch.setattr(species_mod, "_db_region_map", lambda: {"Tak": "เหนือ"})
+        assert get_recommended_species("Tak")["region"] == "เหนือ"  # hardcoded = ตะวันตก

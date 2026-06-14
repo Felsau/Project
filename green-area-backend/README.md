@@ -44,6 +44,15 @@ API docs interactive: `http://localhost:8000/docs`
 ตาราง Supabase ทั้งหมดอยู่ใน `migrations/000_initial_schema.sql` รัน migration เพิ่มเติม
 (ถ้ามี) ตามลำดับเลข
 
+`provinces` (migration 006) เป็นตารางอ้างอิงที่ normalize ชื่อไทย + ภาค ของ 77 จังหวัด
+ไว้ที่เดียว (single source of truth) แล้วตารางข้อมูลอื่น FK → `provinces(name_en)` ·
+`species.py::_region_for` อ่านภาคจากตารางนี้ก่อน (fallback ไป `PROVINCE_REGION` hardcoded
+ถ้า DB ยังไม่มีข้อมูล)
+
+`districts` (migration 007) เป็นตารางอ้างอิงระดับอำเภอ (928 อำเภอ + พื้นที่ km²) ·
+4 ตารางอำเภอทำ composite FK `(province, district)` → `districts(province, name_en)` ·
+ไม่ต้องแก้ logic เดิม (FK ระดับ DB) — `district` ยังเป็น text เหมือนเดิม
+
 ## ออกแบบ cache (สรุป)
 
 - ทุก endpoint ที่ trigger GEE compute ราคาแพง → check cache ก่อน
