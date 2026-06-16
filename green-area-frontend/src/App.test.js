@@ -1,27 +1,27 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import App from './App';
 
-jest.mock('@deck.gl/react', () => ({
+vi.mock('@deck.gl/react', () => ({
   __esModule: true,
   default: ({ children }) => <div data-testid="deckgl">{children}</div>,
 }));
-jest.mock('@deck.gl/layers', () => ({
+vi.mock('@deck.gl/layers', () => ({
   GeoJsonLayer: class {},
   BitmapLayer: class {},
   ScatterplotLayer: class {},
   TextLayer: class {},
 }));
-jest.mock('@deck.gl/geo-layers', () => ({ TileLayer: class {} }));
-jest.mock('@deck.gl/extensions', () => ({ ClipExtension: class {} }));
-jest.mock('@deck.gl/core', () => ({
+vi.mock('@deck.gl/geo-layers', () => ({ TileLayer: class {} }));
+vi.mock('@deck.gl/extensions', () => ({ ClipExtension: class {} }));
+vi.mock('@deck.gl/core', () => ({
   FlyToInterpolator: class {},
   WebMercatorViewport: class { getBounds() { return [0, 0, 1, 1]; } },
 }));
-jest.mock('@turf/turf', () => ({
+vi.mock('@turf/turf', () => ({
   area: () => 0,
   bbox: () => [0, 0, 0, 0],
 }));
-jest.mock('react-map-gl/maplibre', () => ({ __esModule: true, default: () => null }));
+vi.mock('react-map-gl/maplibre', () => ({ __esModule: true, default: () => null }));
 
 beforeEach(() => {
   sessionStorage.clear();                              // landing gate ใช้ sessionStorage

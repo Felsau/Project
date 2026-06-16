@@ -5,9 +5,9 @@ import { pushError } from '../utils/toast';
 
 // fetchWithRetry is the only network dependency — mock it so we control timing
 // and assert the abort/last-click-wins behaviour without a real backend.
-// (jest.mock is hoisted above the imports above, so they receive the mocks.)
-jest.mock('../utils/fetchRetry', () => ({ fetchWithRetry: jest.fn() }));
-jest.mock('../utils/toast', () => ({ pushError: jest.fn() }));
+// (vi.mock is hoisted above the imports above, so they receive the mocks.)
+vi.mock('../utils/fetchRetry', () => ({ fetchWithRetry: vi.fn() }));
+vi.mock('../utils/toast', () => ({ pushError: vi.fn() }));
 
 const okJson = (body) => ({ ok: true, json: async () => body });
 
@@ -18,7 +18,7 @@ beforeEach(() => {
 
 test('fetchNDVI populates stats and updates the ndvi cache', async () => {
   fetchWithRetry.mockResolvedValue(okJson({ ndvi_mean: 0.5, monthly: [], lst_mean: 30 }));
-  const setNdviCache = jest.fn();
+  const setNdviCache = vi.fn();
   const { result } = renderHook(() => useProvinceData({ setNdviCache }));
 
   await act(async () => { await result.current.fetchNDVI('Chiang Mai'); });
@@ -44,7 +44,7 @@ test('a newer fetch supersedes an older one (last-click-wins)', async () => {
     }
     return Promise.resolve(okJson({ ndvi_mean: 0.8, monthly: [], lst_mean: 25 }));
   });
-  const setNdviCache = jest.fn();
+  const setNdviCache = vi.fn();
   const { result } = renderHook(() => useProvinceData({ setNdviCache }));
 
   await act(async () => {
@@ -60,7 +60,7 @@ test('a newer fetch supersedes an older one (last-click-wins)', async () => {
 
 test('an HTTP error surfaces a toast and leaves stats null', async () => {
   fetchWithRetry.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
-  const { result } = renderHook(() => useProvinceData({ setNdviCache: jest.fn() }));
+  const { result } = renderHook(() => useProvinceData({ setNdviCache: vi.fn() }));
 
   await act(async () => { await result.current.fetchNDVI('Krabi'); });
 

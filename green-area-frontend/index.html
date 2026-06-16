@@ -2,7 +2,7 @@
 <html lang="th">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1e8e3e" />
     <meta
@@ -12,20 +12,20 @@
 
     <!-- Social share cards (Open Graph + Twitter).
          NOTE: og:image/og:url ควรเป็น URL เต็ม (absolute) เพื่อให้ตัว scrape
-         (LINE/Facebook/X) ดึงรูปได้ — ตั้ง PUBLIC_URL=https://<โดเมน> ตอน build
-         หรือใส่ "homepage" ใน package.json ให้ %PUBLIC_URL% กลายเป็น URL เต็ม -->
+         (LINE/Facebook/X) ดึงรูปได้ — Vite ไม่มี %PUBLIC_URL% แล้ว ตั้ง og:url/og:image
+         เป็น absolute ตอน deploy ได้ผ่าน meta หรือ post-build ถ้าต้องการ scrape สมบูรณ์ -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Green Area Analysis" />
     <meta property="og:locale" content="th_TH" />
     <meta property="og:title" content="Green Area Analysis · Thailand" />
     <meta property="og:description" content="แดชบอร์ดวิเคราะห์พื้นที่สีเขียว NDVI / LST / Urban Coverage ของประเทศไทย — ดึงข้อมูลจาก Google Earth Engine" />
-    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+    <meta property="og:image" content="/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Green Area Analysis · Thailand" />
     <meta name="twitter:description" content="แดชบอร์ดวิเคราะห์พื้นที่สีเขียว NDVI / LST / Urban Coverage ของประเทศไทย" />
-    <meta name="twitter:image" content="%PUBLIC_URL%/og-image.png" />
+    <meta name="twitter:image" content="/og-image.png" />
 
     <!-- Editorial display faces for the landing "Atlas" cover (Newsreader =
          italic English display, Noto Serif Thai = Thai display headings). -->
@@ -36,16 +36,17 @@
       rel="stylesheet"
     />
 
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <link rel="manifest" href="/manifest.json" />
     <title>Green Area Analysis · Thailand</title>
     <!-- Theme applied before first paint (no flash). External same-origin file
          (not inline) so the enforced CSP `script-src 'self'` allows it without
          'unsafe-inline'. Render-blocking on purpose — must run before paint. -->
-    <script src="%PUBLIC_URL%/theme-init.js"></script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <script type="module" src="/src/index.js"></script>
   </body>
 </html>

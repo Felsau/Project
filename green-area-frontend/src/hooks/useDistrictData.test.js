@@ -5,9 +5,9 @@ import { pushError } from '../utils/toast';
 
 // Only fetchDistrictNDVI is exercised here — it uses fetchWithRetry exclusively,
 // so mocking that is enough to assert the last-click-wins abort we added.
-// (jest.mock is hoisted above the imports above, so they receive the mocks.)
-jest.mock('../utils/fetchRetry', () => ({ fetchWithRetry: jest.fn() }));
-jest.mock('../utils/toast', () => ({ pushError: jest.fn() }));
+// (vi.mock is hoisted above the imports above, so they receive the mocks.)
+vi.mock('../utils/fetchRetry', () => ({ fetchWithRetry: vi.fn() }));
+vi.mock('../utils/toast', () => ({ pushError: vi.fn() }));
 
 const okJson = (body) => ({ ok: true, json: async () => body });
 

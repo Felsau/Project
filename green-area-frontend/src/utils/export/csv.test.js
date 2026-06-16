@@ -2,10 +2,10 @@ import { downloadCsv } from './shared';
 import { exportRankingCsv, exportCompareCsv, exportRecommendCsv } from './csv';
 
 // mock low-level shared เพื่อจับ rows ที่ส่งเข้า downloadCsv (ไม่แตะ DOM/Blob จริง)
-// jest hoist jest.mock ขึ้นเหนือ import อัตโนมัติ → downloadCsv ที่ import มาเป็น mock
-jest.mock('./shared', () => ({
+// jest hoist vi.mock ขึ้นเหนือ import อัตโนมัติ → downloadCsv ที่ import มาเป็น mock
+vi.mock('./shared', () => ({
   ts: () => '20260101_0000',
-  downloadCsv: jest.fn(),
+  downloadCsv: vi.fn(),
 }));
 
 const lastCall = () => downloadCsv.mock.calls[downloadCsv.mock.calls.length - 1];

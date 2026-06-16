@@ -1,6 +1,6 @@
 # Green Area Frontend
 
-React 19 + DeckGL + MapLibre — แผนที่ 3D extrusion ของพื้นที่สีเขียวประเทศไทย
+React 19 + Vite + DeckGL + MapLibre — แผนที่ 3D extrusion ของพื้นที่สีเขียวประเทศไทย
 
 ดู [../README.md](../README.md) สำหรับ architecture และ setup ทั้งหมด — ไฟล์นี้เก็บเฉพาะ
 รายละเอียดเฉพาะ frontend
@@ -8,9 +8,12 @@ React 19 + DeckGL + MapLibre — แผนที่ 3D extrusion ของพื
 ## Scripts
 
 ```powershell
-npm start         # dev server → http://localhost:3000
+npm run dev       # dev server (Vite) → http://localhost:3000
+npm start         # alias ของ dev
 npm run build     # production bundle → build/
-npm test -- --watchAll=false   # run test suite once
+npm run preview   # serve production build เพื่อทดสอบ local
+npm run lint      # eslint (flat config)
+npm test          # run test suite once (vitest)
 ```
 
 ## โครงสร้าง
@@ -42,7 +45,8 @@ src/
 
 ## Environment
 
-- `REACT_APP_API_URL` (optional) — backend URL · default `http://localhost:8000`
+- `VITE_API_URL` (optional) — backend URL · default `http://localhost:8000`
+  · ตั้งใน .env / .env.production หรือ env ของ Netlify/Vercel (Vite อ่าน prefix `VITE_`)
 
 ## Error handling
 

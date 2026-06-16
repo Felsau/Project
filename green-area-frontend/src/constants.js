@@ -40,7 +40,7 @@ export const PROVINCE_TH = {
   "Yasothon": "ยโสธร",
 };
 
-export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 export const MAP_STYLE_DARK = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 

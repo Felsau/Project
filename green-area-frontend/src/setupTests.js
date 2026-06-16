@@ -18,7 +18,7 @@ const fetchOk = () => Promise.resolve({
     type: 'FeatureCollection', features: [],
   }),
 });
-global.fetch = jest.fn(fetchOk);
+global.fetch = vi.fn(fetchOk);
 if (typeof window !== 'undefined') window.fetch = global.fetch;
 
 beforeEach(() => {

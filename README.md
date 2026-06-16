@@ -73,7 +73,7 @@ uvicorn main:app --reload
 ```powershell
 cd green-area-frontend
 npm install
-npm start
+npm run dev        # Vite dev server
 # → http://localhost:3000
 ```
 
@@ -144,7 +144,8 @@ pytest tests/ -v
 
 ## Deploy notes
 
-- **Frontend** → Vercel/Netlify (CRA static)
+- **Frontend** → Vercel/Netlify (Vite static · build `npm run build` → `build/`)
+  - ตั้ง env `VITE_API_URL` = URL ของ backend ใน dashboard (เดิมชื่อ `REACT_APP_API_URL`)
 - **Backend** → Render/Railway (Python web service)
   - Build: `pip install -r requirements.txt`
   - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'`
