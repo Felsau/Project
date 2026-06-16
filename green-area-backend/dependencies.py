@@ -35,7 +35,7 @@ CURRENT_CACHE_VERSION = 2
 # Recommend cache version — แยกจาก CURRENT_CACHE_VERSION (NDVI/LST/urban) เพราะ
 # compute logic ของ /recommend เปลี่ยนคนละจังหวะ · bump เมื่อแก้ priority/plantable/
 # impact logic ที่ทำให้ค่า cache เก่าไม่ valid · v1 = plantability mask (ESA WorldCover)
-# + Cloud Score+ NDVI · row เก่าก่อน 2 ฟีเจอร์นี้ถูก migration 008 ตั้งเป็น 0 → stale
+# + Cloud Score+ NDVI + relative-LST anomaly · row เก่าถูก migration 008 ตั้งเป็น 0 → stale
 RECOMMEND_CACHE_VERSION = 1
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -253,3 +253,12 @@ def get_district_geom(province_name: str, district_name: str) -> dict:
             status_code=404,
             detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
     return geom
+
+
+def ensure_district(province_name: str, district_name: str) -> None:
+    """Raise 404 ถ้าอำเภอไม่อยู่ใน DISTRICT_GEOMETRIES — คู่กับ ensure_province
+    (validate อย่างเดียว ไม่คืน geom · ใช้ใน endpoint ที่ไม่ต้องใช้ geom เช่น timeseries)"""
+    if (province_name, district_name) not in DISTRICT_GEOMETRIES:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
