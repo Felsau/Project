@@ -29,6 +29,12 @@ WORLDPOP_YEAR = int(os.getenv("WORLDPOP_YEAR", "2020"))
 # (เช่น เพิ่ม water mask, เปลี่ยน NDVI threshold)
 # _is_stale() จะถือว่า row ที่ cache_version < CURRENT_CACHE_VERSION = stale
 CURRENT_CACHE_VERSION = 1
+
+# Recommend cache version — แยกจาก CURRENT_CACHE_VERSION (NDVI/LST/urban) เพราะ
+# compute logic ของ /recommend เปลี่ยนคนละจังหวะ · bump เมื่อแก้ priority/plantable/
+# impact logic ที่ทำให้ค่า cache เก่าไม่ valid · v1 = เพิ่ม plantability mask (ESA
+# WorldCover) · row เก่าก่อนมี mask ถูก migration 008 ตั้งเป็น 0 → ถือว่า stale
+RECOMMEND_CACHE_VERSION = 1
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
@@ -222,3 +228,26 @@ def ensure_province(province_name: str) -> None:
 
 DISTRICT_GEOMETRIES = _load_district_geometries()
 logger.info("✅ โหลดขอบเขต %d อำเภอ", len(DISTRICT_GEOMETRIES))
+
+
+def get_province_geom(province_name: str) -> dict:
+    """คืน geometry ของจังหวัด หรือ raise 404 ถ้าไม่เจอ.
+
+    เหมือน ensure_province แต่คืน geom กลับมาด้วย — ใช้แทน pattern
+    `geom = PROVINCE_GEOMETRIES.get(...); if not geom: raise 404` ที่ endpoint
+    ระดับจังหวัดเขียนซ้ำ เมื่อยังต้องใช้ geom ต่อ
+    """
+    geom = PROVINCE_GEOMETRIES.get(province_name)
+    if not geom:
+        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    return geom
+
+
+def get_district_geom(province_name: str, district_name: str) -> dict:
+    """คืน geometry ของอำเภอ หรือ raise 404 ถ้าไม่เจอ — คู่กับ get_province_geom."""
+    geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
+    if not geom:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
+    return geom

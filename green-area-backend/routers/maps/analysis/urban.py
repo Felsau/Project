@@ -5,7 +5,7 @@ import ee
 from fastapi import APIRouter, HTTPException
 
 from dependencies import (supa_call, internal_error,
-                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          get_province_geom, get_district_geom,
                           CURRENT_YEAR, WHO_STANDARD_M2, CURRENT_CACHE_VERSION,
                           WORLDPOP_YEAR, YearParam)
 from gee_utils import mask_s2_clouds
@@ -39,15 +39,10 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
     (built-up เปลี่ยนแปลงน้อยใน timescale ปี)
     """
     if district_name:
-        raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
-        if not raw_geom:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
+        raw_geom = get_district_geom(province_name, district_name)
         scope = f"{province_name}/{district_name}"
     else:
-        raw_geom = PROVINCE_GEOMETRIES.get(province_name)
-        if not raw_geom:
-            raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+        raw_geom = get_province_geom(province_name)
         scope = province_name
 
     # Cache lookup (best-effort — ถ้า table ยังไม่มี ก็ skip)

@@ -3,7 +3,7 @@ import logging
 import ee
 
 from dependencies import (supa_call, internal_error,
-                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+                          get_province_geom, get_district_geom,
                           CURRENT_YEAR, MONTH_NAMES, YearParam,
                           CURRENT_CACHE_VERSION)
 from gee_utils import get_lst_col, reduce_lst, scale_lst
@@ -63,10 +63,7 @@ def _compute_lst_monthly(geom: ee.Geometry, year: int, scale: int):
 # ── District LST monthly ─────────────────────────────────── (before catch-all)
 @router.get("/lst/{province_name}/districts/{district_name}/monthly")
 def get_district_lst_monthly(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
-    raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
-    if not raw_geom:
-        raise HTTPException(status_code=404,
-            detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
+    raw_geom = get_district_geom(province_name, district_name)
 
     cached = supa_call(lambda s: s.table("district_lst_monthly")
                        .select("*").eq("province", province_name)
@@ -92,10 +89,7 @@ def get_district_lst_monthly(province_name: str, district_name: str, year: YearP
 # ── District LST annual ──────────────────────────────────── (before catch-all)
 @router.get("/lst/{province_name}/districts/{district_name}")
 def get_district_lst(province_name: str, district_name: str, year: YearParam = CURRENT_YEAR):
-    raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
-    if not raw_geom:
-        raise HTTPException(status_code=404,
-            detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
+    raw_geom = get_district_geom(province_name, district_name)
 
     cached = supa_call(lambda s: s.table("district_lst_annual")
                        .select("*").eq("province", province_name)
@@ -132,9 +126,7 @@ def get_district_lst(province_name: str, district_name: str, year: YearParam = C
 # ── Province LST monthly ─────────────────────────────────────────────────────
 @router.get("/lst/{province_name}/monthly", response_model=LSTMonthlyResponse)
 def get_lst_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
-    raw_geom = PROVINCE_GEOMETRIES.get(province_name)
-    if not raw_geom:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    raw_geom = get_province_geom(province_name)
 
     cached = supa_call(lambda s: s.table("province_lst_monthly")
                        .select("*").eq("province", province_name).eq("year", year).execute())
@@ -159,9 +151,7 @@ def get_lst_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
 # ── Province LST annual ──────────────────────────────────────────────────────
 @router.get("/lst/{province_name}", response_model=LSTResponse)
 def get_lst(province_name: str, year: YearParam = CURRENT_YEAR):
-    raw_geom = PROVINCE_GEOMETRIES.get(province_name)
-    if not raw_geom:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    raw_geom = get_province_geom(province_name)
 
     cached = supa_call(lambda s: s.table("province_lst_annual")
                        .select("*").eq("province", province_name).eq("year", year).execute())

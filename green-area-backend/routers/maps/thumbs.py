@@ -5,7 +5,7 @@ import logging
 import ee
 from fastapi import APIRouter, HTTPException, Response
 
-from dependencies import (PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+from dependencies import (get_province_geom, get_district_geom,
                           CURRENT_YEAR, YearParam, load_thailand_geojson_raw)
 from gee_utils import mask_s2_clouds, get_lst_col
 
@@ -21,16 +21,10 @@ def ndvi_thumb(province_name: str, year: YearParam = CURRENT_YEAR,
                district_name: str | None = None):
     """NDVI raster thumbnail พร้อม colorbar + north arrow + scale bar"""
     if district_name:
-        raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
-        if not raw_geom:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบอำเภอ '{district_name}'")
+        raw_geom = get_district_geom(province_name, district_name)
         label = f"NDVI · {district_name}, {province_name} · {year}"
     else:
-        raw_geom = PROVINCE_GEOMETRIES.get(province_name)
-        if not raw_geom:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบจังหวัด '{province_name}'")
+        raw_geom = get_province_geom(province_name)
         label = f"NDVI · {province_name} · {year}"
 
     geom = ee.Geometry(raw_geom)
@@ -69,16 +63,10 @@ def lst_thumb(province_name: str, year: YearParam = CURRENT_YEAR,
               district_name: str | None = None):
     """LST raster thumbnail พร้อม colorbar + north arrow + scale bar"""
     if district_name:
-        raw_geom = DISTRICT_GEOMETRIES.get((province_name, district_name))
-        if not raw_geom:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบอำเภอ '{district_name}'")
+        raw_geom = get_district_geom(province_name, district_name)
         label = f"Land Surface Temperature · {district_name}, {province_name} · {year}"
     else:
-        raw_geom = PROVINCE_GEOMETRIES.get(province_name)
-        if not raw_geom:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบจังหวัด '{province_name}'")
+        raw_geom = get_province_geom(province_name)
         label = f"Land Surface Temperature · {province_name} · {year}"
 
     geom = ee.Geometry(raw_geom)

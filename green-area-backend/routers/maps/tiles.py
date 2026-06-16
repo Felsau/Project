@@ -10,7 +10,7 @@ import time
 import ee
 from fastapi import APIRouter, HTTPException
 
-from dependencies import (PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+from dependencies import (get_province_geom, get_district_geom,
                           CURRENT_YEAR, YearParam, internal_error)
 from gee_utils import mask_s2_clouds, get_lst_col
 
@@ -58,15 +58,8 @@ def _cache_put(key: tuple, url: str) -> None:
 
 def _resolve_geom(province_name: str, district_name: str | None) -> dict:
     if district_name:
-        raw = DISTRICT_GEOMETRIES.get((province_name, district_name))
-        if not raw:
-            raise HTTPException(status_code=404,
-                detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
-        return raw
-    raw = PROVINCE_GEOMETRIES.get(province_name)
-    if not raw:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
-    return raw
+        return get_district_geom(province_name, district_name)
+    return get_province_geom(province_name)
 
 
 def _ndvi_image(geom: ee.Geometry, year: int):

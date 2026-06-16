@@ -28,6 +28,35 @@ def normalize_weights(w_ndvi: float, w_lst: float, w_pop: float) -> tuple[float,
     return w_ndvi / total, w_lst / total, w_pop / total
 
 
+# ── Plantability (ESA WorldCover v200, ปี 2021) ──────────────────────────────
+# พื้นที่ที่ "ปลูกป่าได้จริง" — เดิม plantable area คิดจาก priority>threshold เฉยๆ
+# → ระบบแนะนำปลูกบนน้ำ/อาคาร/ป่าที่มีอยู่แล้วได้ · ใช้ WorldCover (global mosaic
+# ปี 2021, single image — ตัวเดียวกับที่ urban.py ใช้) เป็น mask กรองออก
+# class ที่ตัดออก (ปลูกไม่ได้/ไม่ควร):
+#   10 Tree cover (มีต้นไม้อยู่แล้ว ไม่ใช่พื้นที่ขาด) · 50 Built-up (สิ่งปลูกสร้าง —
+#   ปลูก 400 ต้น/ha ไม่ได้จริง) · 70 Snow/ice · 80 Permanent water (ปลูกไม่ได้) ·
+#   90 Herbaceous wetland · 95 Mangroves (ระบบนิเวศชุ่มน้ำ/ป่าชายเลน) · 100 Moss/lichen
+# คงเป็น plantable: 20 Shrubland, 30 Grassland, 40 Cropland, 60 Bare/sparse
+# NOTE: Cropland (40) นับเป็น plantable โดย default (marginal land/agroforestry) —
+#       ถ้าต้องการนับเฉพาะที่ว่างจริง เพิ่ม 40 ลงใน tuple นี้
+ESA_NON_PLANTABLE_CLASSES = (10, 50, 70, 80, 90, 95, 100)
+
+
+def plantable_mask(geom: ee.Geometry) -> ee.Image:
+    """คืน mask (1 = ปลูกได้, ที่เหลือถูก mask) จาก ESA WorldCover v200.
+
+    ใช้กรอง top-locations + plantable-area ไม่ให้แนะนำปลูกบนน้ำ อาคาร ป่าเดิม หรือ
+    พื้นที่ชุ่มน้ำ · ไม่ใช้ mask นี้กับ priority heatmap (heatmap ยังโชว์ "ความต้องการ"
+    ทั่วพื้นที่) · WorldCover เป็น global mosaic ปี 2021 ครอบคลุมทั้งไทย
+    """
+    wc = ee.ImageCollection("ESA/WorldCover/v200").first().clip(geom)
+    non_plantable = ee.Image.constant(0)
+    for code in ESA_NON_PLANTABLE_CLASSES:
+        non_plantable = non_plantable.Or(wc.eq(code))
+    # selfMask() → 0 (ปลูกไม่ได้) ถูก mask, เหลือเฉพาะ pixel ค่า 1 ที่ปลูกได้
+    return non_plantable.Not().selfMask().rename('plantable')
+
+
 def assert_imagery_available(geom: ee.Geometry, year: int) -> None:
     """ตรวจว่ามีภาพ S2 + Landsat ที่ผ่าน cloud filter พอจะ compute priority ไหม.
 
@@ -110,12 +139,21 @@ def compute_priority(geom: ee.Geometry, year: int,
                 .rename('priority')
                 .clip(geom))
 
-    return priority, ndvi_deficit, lst_heat, pop_need
+    # ── 5. Plantability mask ────────────────────────────────────
+    # ส่ง mask แยกออกมา (ไม่ mask ตัว priority) ให้ top-locations + plantable-area
+    # กรองจุดที่ปลูกได้จริง · lazy ee.Image — ไม่ถูก evaluate จนกว่าจะถูกใช้
+    plantable = plantable_mask(geom)
+
+    return priority, ndvi_deficit, lst_heat, pop_need, plantable
 
 
-def get_top_locations(priority: ee.Image, geom: ee.Geometry, n: int = 10):
-    """หา top-n pixels ที่มี priority สูงสุด"""
-    samples = (priority
+def get_top_locations(priority: ee.Image, geom: ee.Geometry,
+                      plantable: ee.Image, n: int = 10):
+    """หา top-n pixels ที่มี priority สูงสุด — เฉพาะบนพื้นที่ที่ปลูกได้จริง.
+
+    updateMask(plantable) ก่อน sample → ไม่คืนจุดบนน้ำ/อาคาร/ป่าเดิม
+    (dropNulls=True ตัด pixel ที่ถูก mask ออกอยู่แล้ว)"""
+    samples = (priority.updateMask(plantable)
                .sample(region=geom, scale=200, numPixels=2000,
                        geometries=True, dropNulls=True)
                .sort('priority', False)
@@ -133,10 +171,12 @@ def get_top_locations(priority: ee.Image, geom: ee.Geometry, n: int = 10):
     return results
 
 
-def compute_plantable_area_m2(priority: ee.Image, geom: ee.Geometry) -> float:
-    """รวม pixel area ที่ priority > threshold = "ที่ควรปลูกจริง" — สำหรับ impact projection.
+def compute_plantable_area_m2(priority: ee.Image, plantable: ee.Image,
+                              geom: ee.Geometry) -> float:
+    """รวม pixel area ที่ priority > threshold *และ* ปลูกได้จริง (plantable) =
+    "ที่ควรปลูกจริง" สำหรับ impact projection — ตัดน้ำ/อาคาร/ป่าเดิมออกแล้ว.
     ใช้ scale 100m balance ระหว่างความเร็วและความแม่น (priority ก็คำนวณที่ ~100m เช่นกัน)"""
-    high_priority = priority.gt(IMPACT_DEFAULTS["priority_threshold"])
+    high_priority = priority.gt(IMPACT_DEFAULTS["priority_threshold"]).And(plantable)
     area_m2 = (ee.Image.pixelArea().updateMask(high_priority)
                .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
                              scale=100, maxPixels=1e10, bestEffort=True)
