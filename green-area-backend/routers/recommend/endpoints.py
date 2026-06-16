@@ -31,6 +31,20 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _province_site_metrics(province_name: str, year: int):
+    """NDVI/LST เฉลี่ยระดับจังหวัดจาก cache (ปีที่ขอ) — ใช้จัดอันดับพันธุ์ไม้ตามสภาพ
+    พื้นที่ · คืน (lst_mean, ndvi_mean) · None ถ้าไม่มีใน cache → species fallback ลำดับภาค"""
+    def _one(table, col):
+        try:
+            rows = supa_call(lambda s: s.table(table).select(col)
+                             .eq("province", province_name).eq("year", year)
+                             .limit(1).execute()).data
+            return rows[0][col] if rows else None
+        except Exception:
+            return None
+    return _one("province_lst_annual", "lst_mean"), _one("ndvi_annual", "ndvi_mean")
+
+
 def _run_recommendation(province_name: str, district_name: str | None,
                         raw_geom: dict, year: int,
                         w_ndvi: float, w_lst: float, w_pop: float):
@@ -41,7 +55,8 @@ def _run_recommendation(province_name: str, district_name: str | None,
     """
     w_ndvi, w_lst, w_pop = normalize_weights(w_ndvi, w_lst, w_pop)
     is_default = (w_ndvi, w_lst, w_pop) == (W_NDVI, W_LST, W_POP)
-    species_info = get_recommended_species(province_name)
+    lst_mean, ndvi_mean = _province_site_metrics(province_name, year)
+    species_info = get_recommended_species(province_name, lst_mean, ndvi_mean)
     label = province_name if district_name is None else f"{province_name}/{district_name}"
 
     def _base_response(**extra):
@@ -186,7 +201,8 @@ def recommend_custom_area(req: CustomAreaRecommendRequest):
     w_ndvi, w_lst, w_pop = normalize_weights(req.w_ndvi, req.w_lst, req.w_pop)
     # province ใช้แค่เลือกพันธุ์ไม้ — ถ้าไม่อยู่ใน whitelist ก็ข้าม (คืน species ว่าง)
     province = req.province if req.province in PROVINCE_GEOMETRIES else None
-    species_info = (get_recommended_species(province) if province
+    lst_mean, ndvi_mean = _province_site_metrics(province, req.year) if province else (None, None)
+    species_info = (get_recommended_species(province, lst_mean, ndvi_mean) if province
                     else {"region": None, "species": []})
 
     logger.info("⏳ Custom-area recommend: %.1f km² · ปี %d (w=%.2f/%.2f/%.2f)",

@@ -18,13 +18,18 @@ export default function SpeciesSection({ recommendedSpecies }) {
               <span className="species__sci">{sp.scientific}</span>
             </div>
             <div className="species__tags">
+              {sp.site_fit && (
+                <span className="species__tag" style={{ background: 'var(--good-bg, #e6f4ea)', color: 'var(--good, #1a7f37)', fontWeight: 600 }}>
+                  ✓ เหมาะกับพื้นที่นี้
+                </span>
+              )}
               <span className="species__tag">{sp.purpose}</span>
               <span className="species__tag">สูง {sp.height_m} ม.</span>
               {sp.traits?.map((t, j) => (
                 <span key={j} className="species__tag">{t}</span>
               ))}
             </div>
-            <div className="species__reason">{sp.reason}</div>
+            <div className="species__reason">{sp.site_fit ? `${sp.site_fit} · ${sp.reason}` : sp.reason}</div>
           </div>
         ))}
       </div>

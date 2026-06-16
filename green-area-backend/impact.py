@@ -55,6 +55,16 @@ IMPACT_DEFAULTS = {
     "car_co2_t_per_year": 4.6,         # ตัน — EPA 2023 passenger vehicle
 }
 
+# Uncertainty model — annual_co2_tonnes เดิมคือ "ศักยภาพเต็ม" (สมมติรอด 100% +
+# ใช้ coefficient กลาง) · ความจริงต้นกล้าไม่รอดทุกต้น และการกักเก็บ/ต้นแปรผันตาม
+# ดิน/สภาพ/สายพันธุ์ → รายงานเป็น "ช่วง" ที่สมจริงคู่กับศักยภาพ (ไม่แตะ field เดิม)
+#   survival: 65–90% (FAO/restoration survival-to-maturity, กลาง 80%)
+#   per-tree sequestration variance: ±25%
+SURVIVAL_RATE = 0.80
+SURVIVAL_LOW = 0.65
+SURVIVAL_HIGH = 0.90
+SEQUESTRATION_VARIANCE = 0.25
+
 CITATIONS = [
     "IPCC 2019 Refinement to 2006 Guidelines, Vol.4 Ch.4 (tropical biomass)",
     "Bowler D.E. et al. 2010, Landscape & Urban Planning (urban cooling meta-analysis)",
@@ -103,7 +113,14 @@ def estimate_impact(plantable_area_m2: float, species_list: list[dict]) -> dict:
         co2_total_kg = trees_total * IMPACT_DEFAULTS["default_kg_co2"]
 
     annual_co2_tonnes = co2_total_kg / 1000
-    equivalent_cars = annual_co2_tonnes / IMPACT_DEFAULTS["car_co2_t_per_year"]
+    car_co2 = IMPACT_DEFAULTS["car_co2_t_per_year"]
+    equivalent_cars = annual_co2_tonnes / car_co2
+
+    # ช่วงที่สมจริง = ศักยภาพเต็ม × อัตรารอด × ความแปรปรวนการกักเก็บต่อต้น
+    # central (expected) ใช้ survival กลาง · low/high รวม survival + variance สองทาง
+    co2_expected = annual_co2_tonnes * SURVIVAL_RATE
+    co2_low = annual_co2_tonnes * SURVIVAL_LOW * (1 - SEQUESTRATION_VARIANCE)
+    co2_high = annual_co2_tonnes * SURVIVAL_HIGH * (1 + SEQUESTRATION_VARIANCE)
 
     return {
         "plantable_area_km2":       round(plantable_km2, 2),
@@ -112,12 +129,21 @@ def estimate_impact(plantable_area_m2: float, species_list: list[dict]) -> dict:
         "annual_co2_tonnes":        round(annual_co2_tonnes, 1),
         "annual_co2_kg":            round(co2_total_kg, 0),
         "equivalent_cars_off_road": round(equivalent_cars, 1),
+        # ── Uncertainty range (สมจริง รวมอัตรารอด + ความแปรปรวน) ──
+        "annual_co2_tonnes_expected": round(co2_expected, 1),
+        "annual_co2_tonnes_low":      round(co2_low, 1),
+        "annual_co2_tonnes_high":     round(co2_high, 1),
+        "equivalent_cars_expected":   round(co2_expected / car_co2, 1),
+        "survival_rate":              SURVIVAL_RATE,
         "expected_delta_lst_c":     IMPACT_DEFAULTS["delta_lst_c"],
         "maturity_years":           IMPACT_DEFAULTS["maturity_years"],
         "species_breakdown":        species_breakdown,
         "methodology": {
             "priority_threshold": IMPACT_DEFAULTS["priority_threshold"],
             "trees_per_ha":       IMPACT_DEFAULTS["trees_per_ha"],
+            "survival_rate":      SURVIVAL_RATE,
+            "survival_range":     [SURVIVAL_LOW, SURVIVAL_HIGH],
+            "sequestration_variance": SEQUESTRATION_VARIANCE,
             "sources":            CITATIONS,
         },
     }

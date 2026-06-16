@@ -208,12 +208,61 @@ def _region_for(province_name: str) -> str | None:
     return _db_region_map().get(province_name) or PROVINCE_REGION.get(province_name)
 
 
-def get_recommended_species(province_name: str):
-    """คืนพันธุ์ไม้แนะนำตามภาคของจังหวัด พร้อม metadata ของภาคนั้น"""
+# ── Site-aware ranking ───────────────────────────────────────────────────────
+# จัดอันดับพันธุ์ภายในภาคตามสภาพจุดจริง (LST ร้อน / NDVI เสื่อมโทรม / เขียวพอควร)
+# ดันพันธุ์ที่ traits ตรงความต้องการของพื้นที่ขึ้นก่อน · ไม่มี signal = ลำดับภาคเดิม
+HOT_LST_C = 35.0   # LST เฉลี่ย >= นี้ = ร้อน → ดันพันธุ์ร่มเงา/ลดความร้อน
+LOW_NDVI = 0.35    # NDVI เฉลี่ย < นี้ = เสื่อมโทรม/ขาดพืช → ดันพันธุ์ทนทาน/บุกเบิก
+HIGH_NDVI = 0.50   # NDVI เฉลี่ย >= นี้ = เขียวพอควร → ดันพันธุ์พื้นถิ่น/หลากหลาย
+
+_SHADE_KEYWORDS = ("ร่มเงา", "ลดความร้อน", "ทรงพุ่ม")
+_HARDY_KEYWORDS = ("ทนแล้ง", "โตเร็ว", "ตรึงไนโตรเจน", "ฟื้นฟูดิน", "ดินเสื่อม",
+                   "ดินไม่ดี", "ทนมลพิษ", "ดักฝุ่น")
+_BIODIV_KEYWORDS = ("พื้นถิ่น", "อายุยืน", "ผลกินได้", "ผลใช้ประโยชน์", "นกชอบ",
+                    "ใกล้สูญพันธุ์", "เฉพาะถิ่น")
+
+
+def _site_fit(sp: dict, *, hot: bool, degraded: bool, green: bool) -> tuple[int, str | None]:
+    """คืน (score, reason) ของพันธุ์ 1 ชนิดเทียบสภาพพื้นที่ — match keyword ใน traits/purpose/reason"""
+    text = " ".join(sp.get("traits", [])) + " " + sp.get("purpose", "") + " " + sp.get("reason", "")
+    score, reasons = 0, []
+    if hot and any(k in text for k in _SHADE_KEYWORDS):
+        score += 2
+        reasons.append("ให้ร่มเงาในพื้นที่ร้อน")
+    if degraded and any(k in text for k in _HARDY_KEYWORDS):
+        score += 2
+        reasons.append("ทนทาน เหมาะพื้นที่เสื่อมโทรม")
+    if green and any(k in text for k in _BIODIV_KEYWORDS):
+        score += 1
+        reasons.append("เสริมความหลากหลายพันธุ์พื้นถิ่น")
+    return score, (" · ".join(reasons) if reasons else None)
+
+
+def rank_species_by_site(species: list, lst_mean=None, ndvi_mean=None) -> list:
+    """จัดอันดับพันธุ์ตามสภาพพื้นที่ — คืน list ใหม่ของ dict ที่เติม key 'site_fit'
+    (เหตุผล หรือ None) · ไม่มี signal (lst_mean/ndvi_mean None ทั้งคู่) → คืนลำดับเดิม.
+
+    ไม่กลายพันธุ์ (mutate) species เดิม · sort เสถียร คะแนนเท่ากันคงลำดับภาคไว้
+    """
+    if lst_mean is None and ndvi_mean is None:
+        return species
+    hot = lst_mean is not None and lst_mean >= HOT_LST_C
+    degraded = ndvi_mean is not None and ndvi_mean < LOW_NDVI
+    green = ndvi_mean is not None and ndvi_mean >= HIGH_NDVI
+    scored = []
+    for sp in species:
+        score, reason = _site_fit(sp, hot=hot, degraded=degraded, green=green)
+        scored.append((score, {**sp, "site_fit": reason}))
+    # key=score เท่านั้น (ไม่เทียบ dict) · reverse=True ยัง stable → ตีเสมอคงลำดับภาค
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [sp for _, sp in scored]
+
+
+def get_recommended_species(province_name: str, lst_mean=None, ndvi_mean=None):
+    """คืนพันธุ์ไม้แนะนำตามภาค + จัดอันดับตามสภาพพื้นที่ (ถ้าส่ง lst_mean/ndvi_mean)"""
     region = _region_for(province_name)
     if not region:
         return {"region": None, "species": []}
-    return {
-        "region": region,
-        "species": TREE_SPECIES_BY_REGION.get(region, []),
-    }
+    species = rank_species_by_site(
+        TREE_SPECIES_BY_REGION.get(region, []), lst_mean, ndvi_mean)
+    return {"region": region, "species": species}

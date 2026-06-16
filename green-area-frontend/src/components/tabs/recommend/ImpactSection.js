@@ -20,7 +20,9 @@ export default function ImpactSection({ impact }) {
           <div className="impact__label">CO₂ ดูดซับ/ปี</div>
           <div className="impact__num">{impact.annual_co2_tonnes.toLocaleString()} <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>ตัน</span></div>
           <div className="impact__hint">
-            เทียบเท่ารถยนต์ ~{impact.equivalent_cars_off_road.toLocaleString()} คัน
+            {impact.annual_co2_tonnes_low != null && impact.annual_co2_tonnes_high != null
+              ? `ช่วงจริง (รวมอัตรารอด) ~${impact.annual_co2_tonnes_low.toLocaleString()}–${impact.annual_co2_tonnes_high.toLocaleString()} ตัน · เทียบเท่ารถ ~${impact.equivalent_cars_off_road.toLocaleString()} คัน`
+              : `เทียบเท่ารถยนต์ ~${impact.equivalent_cars_off_road.toLocaleString()} คัน`}
           </div>
         </div>
         <div className="impact__cell impact__cell--full">
