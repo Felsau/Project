@@ -1,7 +1,7 @@
 """National & regional context — ค่าเฉลี่ย + อันดับสำหรับเทียบกับจังหวัดที่เลือก."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from dependencies import supa_call, PROVINCE_GEOMETRIES, CURRENT_YEAR, YearParam
+from dependencies import supa_call, ensure_province, CURRENT_YEAR, YearParam
 
 router = APIRouter()
 
@@ -9,8 +9,7 @@ router = APIRouter()
 @router.get("/analysis/context/{province_name}")
 def get_context(province_name: str, year: YearParam = CURRENT_YEAR):
     """คืนค่าเฉลี่ยระดับประเทศ + จังหวัดข้างเคียงสำหรับเทียบกับจังหวัดที่เลือก"""
-    if province_name not in PROVINCE_GEOMETRIES:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    ensure_province(province_name)
 
     rows = supa_call(lambda s: s.table("ndvi_annual")
                      .select("province,ndvi_mean,green_area_pct,green_area_km2,green_area_m2_per_person")

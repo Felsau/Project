@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from dependencies import (supa_call, require_admin,
+from dependencies import (supa_call, require_admin, ensure_province,
                           PROVINCE_GEOMETRIES, CURRENT_YEAR,
                           YearParam, WHO_STANDARD_M2)
 from routers import ndvi, lst, recommend, maps, saved
@@ -183,8 +183,7 @@ def clear_cache(request: Request):
 @app.delete("/cache/{province_name}", dependencies=[Depends(require_admin)])
 def clear_province_cache(province_name: str, request: Request):
     # Whitelist check — กัน admin พิมพ์ผิดแล้วลบ 0 row เงียบๆ
-    if province_name not in PROVINCE_GEOMETRIES:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    ensure_province(province_name)
     client = request.client.host if request.client else "unknown"
     logger.warning("🗑️  ADMIN cache clear (%s) จาก %s", province_name, client)
     for table in CACHE_TABLES:

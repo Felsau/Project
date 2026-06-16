@@ -8,9 +8,9 @@ slope < 0 = ยิ่งเขียวยิ่งเย็น (urban cooling g
 ไม่ trigger GEE — ใช้ cached district rows เหมือน /analysis/districts จึงตอบไว
 และ test ได้โดยไม่แตะ external service
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from dependencies import supa_call, PROVINCE_GEOMETRIES, CURRENT_YEAR, YearParam
+from dependencies import supa_call, ensure_province, CURRENT_YEAR, YearParam
 from stats_utils import linregress
 
 router = APIRouter()
@@ -38,8 +38,7 @@ def get_cooling_analysis(province_name: str, year: YearParam = CURRENT_YEAR):
     คืน scatter points (ndvi, lst ต่ออำเภอ) + regression (slope/r/r²) + คำอธิบายไทย
     สำหรับ plot เป็นกราฟ scatter ในรายงาน/หน้าเว็บ
     """
-    if province_name not in PROVINCE_GEOMETRIES:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    ensure_province(province_name)
 
     ndvi_rows = supa_call(lambda s: s.table("district_ndvi_annual")
         .select("district,ndvi_mean")

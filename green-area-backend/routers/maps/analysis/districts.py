@@ -1,7 +1,7 @@
 """District summary (Phase B-1) — per-district NDVI+LST breakdown จาก cache."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+from dependencies import (supa_call, ensure_province, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
 
 router = APIRouter()
@@ -13,8 +13,7 @@ def get_district_summary(province_name: str, year: YearParam = CURRENT_YEAR):
 
     คืนเฉพาะอำเภอที่มี cached ปีนั้น — ไม่ trigger compute ใหม่เพื่อกันเวลา response.
     """
-    if province_name not in PROVINCE_GEOMETRIES:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    ensure_province(province_name)
 
     ndvi_rows = supa_call(lambda s: s.table("district_ndvi_annual")
         .select("district,ndvi_mean,green_area_pct,green_area_km2,total_area_km2")

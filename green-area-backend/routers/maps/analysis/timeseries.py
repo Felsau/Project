@@ -1,7 +1,7 @@
 """Time-series (Phase B-2) — multi-year NDVI+LST trend จาก cached annual rows."""
 from fastapi import APIRouter, HTTPException
 
-from dependencies import (supa_call, PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
+from dependencies import (supa_call, ensure_province, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
 from stats_utils import forecast_linear, mann_kendall
 
@@ -24,8 +24,7 @@ def get_timeseries(province_name: str,
                 detail=f"ไม่พบอำเภอ '{district_name}' ในจังหวัด '{province_name}'")
         ndvi_table, lst_table = "district_ndvi_annual", "district_lst_annual"
     else:
-        if province_name not in PROVINCE_GEOMETRIES:
-            raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+        ensure_province(province_name)
         ndvi_table, lst_table = "ndvi_annual", "province_lst_annual"
 
     if start_year > end_year:

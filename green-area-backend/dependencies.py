@@ -210,5 +210,15 @@ def load_thailand_geojson_raw() -> dict | None:
 PROVINCE_GEOMETRIES = _load_province_geometries()
 logger.info("✅ โหลดขอบเขต %d จังหวัดจาก GADM", len(PROVINCE_GEOMETRIES))
 
+
+def ensure_province(province_name: str) -> None:
+    """Raise 404 ถ้าจังหวัดไม่อยู่ใน PROVINCE_GEOMETRIES.
+
+    รวม guard ที่ทุก endpoint ระดับจังหวัดเคยเขียนซ้ำ ให้สถานะ/ข้อความ
+    อยู่ที่เดียว — เรียกแทน `if province_name not in PROVINCE_GEOMETRIES: raise ...`
+    """
+    if province_name not in PROVINCE_GEOMETRIES:
+        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+
 DISTRICT_GEOMETRIES = _load_district_geometries()
 logger.info("✅ โหลดขอบเขต %d อำเภอ", len(DISTRICT_GEOMETRIES))

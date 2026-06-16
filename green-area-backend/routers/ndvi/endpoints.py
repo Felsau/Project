@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 import logging
 import ee
 
-from dependencies import (get_population, supa_call, internal_error,
+from dependencies import (get_population, supa_call, internal_error, ensure_province,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam, YEAR_MIN, YEAR_MAX,
                           CURRENT_CACHE_VERSION)
@@ -141,8 +141,7 @@ def get_ndvi_monthly(province_name: str, year: YearParam = CURRENT_YEAR):
 @router.get("/ndvi/{province_name}/compare")
 def get_ndvi_compare(province_name: str,
                      years: str = ",".join(str(y) for y in range(CURRENT_YEAR - 3, CURRENT_YEAR + 1))):
-    if province_name not in PROVINCE_GEOMETRIES:
-        raise HTTPException(status_code=404, detail=f"ไม่พบจังหวัด '{province_name}'")
+    ensure_province(province_name)
     if len(years) > 2000:  # bound parse cost — กัน query string ยักษ์
         raise HTTPException(status_code=400, detail="พารามิเตอร์ years ยาวเกินไป")
     year_list = sorted(set(int(y.strip()) for y in years.split(",") if y.strip().isdigit()))
