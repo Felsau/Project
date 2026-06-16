@@ -1,17 +1,32 @@
 import ee
 
+# ── Sentinel-2 cloud masking — Cloud Score+ ──────────────────────────────────
+# เลิกใช้ QA60 (bitmask เมฆ) เพราะ ESA หยุดเติมข้อมูล band นี้ช่วง ม.ค.2022–ก.พ.2024
+# ใน S2_SR_HARMONIZED → mask กลายเป็น no-op (เมฆปนเข้า NDVI median ทำให้ค่าต่ำ/เพี้ยน)
+# Cloud Score+ เป็น dataset แยกที่ Google คำนวณให้ทั้ง S2 archive (เชื่อถือได้ทุกปี)
+# band 'cs' = คะแนนความใส 0–1 · cs >= threshold = pixel ใส (Google แนะนำ 0.5–0.65)
+_CS_PLUS_ID = 'GOOGLE/CLOUD_SCORE_PLUS/V1/S2_HARMONIZED'
+_CS_BAND = 'cs'
+_CS_CLEAR_THRESHOLD = 0.6
 
-def mask_s2_clouds(image):
-    qa = image.select('QA60')
-    cloud_bit = 1 << 10
-    cirrus_bit = 1 << 11
-    mask = (
-        qa.bitwiseAnd(cloud_bit).eq(0)
-        .And(qa.bitwiseAnd(cirrus_bit).eq(0))
-    )
-    return (image.updateMask(mask)
+
+def _mask_s2_csplus(image):
+    """Mask เมฆ 1 ภาพด้วย band Cloud Score+ ที่ link มาแล้ว + scale reflectance 0–1"""
+    cs = image.select(_CS_BAND)
+    return (image.updateMask(cs.gte(_CS_CLEAR_THRESHOLD))
                  .divide(10000)
                  .copyProperties(image, ['system:time_start']))
+
+
+def clean_s2_collection(s2_col):
+    """รับ S2_SR_HARMONIZED collection (filter พื้นที่/วันที่/cloud% แล้ว) → link
+    Cloud Score+, mask เมฆรายภาพ, แล้ว scale เป็น reflectance 0–1.
+
+    ใช้แทน `.map(mask_s2_clouds)` เดิม (QA60) — เรียกครอบ collection ที่ build เสร็จ:
+        col = clean_s2_collection(ee.ImageCollection(...).filterBounds(geom)...)
+    """
+    return (s2_col.linkCollection(ee.ImageCollection(_CS_PLUS_ID), [_CS_BAND])
+                  .map(_mask_s2_csplus))
 
 
 def _mask_landsat_clouds(image):

@@ -8,7 +8,7 @@ from dependencies import (supa_call, internal_error,
                           get_province_geom, get_district_geom,
                           CURRENT_YEAR, WHO_STANDARD_M2, CURRENT_CACHE_VERSION,
                           WORLDPOP_YEAR, YearParam)
-from gee_utils import mask_s2_clouds
+from gee_utils import clean_s2_collection
 
 # ESA WorldCover v200 class code (Built-up = สิ่งปลูกสร้าง/พื้นที่ urban)
 ESA_BUILTUP_CLASS = 50
@@ -78,11 +78,11 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
         built_up = wc.eq(ESA_BUILTUP_CLASS)
 
         # Sentinel-2 NDVI ของปีที่ขอ
-        s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-              .filterBounds(geom)
-              .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
-              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
-              .map(mask_s2_clouds))
+        s2 = clean_s2_collection(
+            ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            .filterBounds(geom)
+            .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
         if s2.size().getInfo() == 0:
             raise HTTPException(status_code=404,
                 detail=f"ไม่พบภาพ Sentinel-2 สำหรับ {scope} ปี {year}")

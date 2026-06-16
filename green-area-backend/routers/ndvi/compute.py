@@ -6,7 +6,7 @@
 import ee
 
 from dependencies import CURRENT_CACHE_VERSION, WHO_STANDARD_M2, MONTH_NAMES
-from gee_utils import mask_s2_clouds
+from gee_utils import clean_s2_collection
 
 
 def _is_stale(row: dict) -> bool:
@@ -54,11 +54,11 @@ def _compute_ndvi_annual(geom: ee.Geometry, year: int, scale: int):
     `green_area_m2_raw` ซึ่งเป็นค่าดิบไว้ให้ caller ใช้คำนวณ m²/คน แล้ว pop ทิ้ง.
     """
     def s2_col(cloud_pct):
-        return (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                .filterBounds(geom)
-                .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_pct))
-                .map(mask_s2_clouds))
+        return clean_s2_collection(
+            ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            .filterBounds(geom)
+            .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_pct)))
 
     col = s2_col(20)
     if col.size().getInfo() == 0:
@@ -121,12 +121,12 @@ def _compute_ndvi_monthly(geom: ee.Geometry, year: int, scale: int):
     """NDVI 12 เดือน รวมใน 1 round-trip ด้วย ee.List.sequence(server-side map)."""
     def by_month(m):
         m_int = ee.Number(m).toInt()
-        col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-               .filterBounds(geom)
-               .filter(ee.Filter.calendarRange(m_int, m_int, 'month'))
-               .filter(ee.Filter.calendarRange(year, year, 'year'))
-               .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
-               .map(mask_s2_clouds))
+        col = clean_s2_collection(
+            ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            .filterBounds(geom)
+            .filter(ee.Filter.calendarRange(m_int, m_int, 'month'))
+            .filter(ee.Filter.calendarRange(year, year, 'year'))
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
         # เติม B8/B4 placeholder กัน normalizedDifference พังตอน col ว่าง
         median = col.median().addBands(
             ee.Image.constant([0, 0]).rename(['B8', 'B4']).selfMask(),

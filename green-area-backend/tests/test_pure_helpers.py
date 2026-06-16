@@ -18,30 +18,38 @@ from impact import estimate_impact, IMPACT_DEFAULTS, TREE_CO2_PER_YEAR
 
 # ── _is_stale ────────────────────────────────────────────────────────────────
 class TestIsStale:
+    # row "modern" ใส่ cache_version = ปัจจุบัน เพื่อให้ผ่านด่าน version ก่อน แล้ว
+    # ทดสอบ "เกณฑ์อื่น" (green_area/ndvi_min) ได้ตรง ไม่ถูก version short-circuit
     def test_complete_modern_row_not_stale(self):
-        row = {"green_area_pct": 35.2, "total_area_km2": 1234, "ndvi_min": 0.05}
+        row = {"green_area_pct": 35.2, "total_area_km2": 1234, "ndvi_min": 0.05,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is False
 
     def test_missing_green_area_pct_is_stale(self):
-        row = {"green_area_pct": None, "total_area_km2": 1234, "ndvi_min": 0.05}
+        row = {"green_area_pct": None, "total_area_km2": 1234, "ndvi_min": 0.05,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is True
 
     def test_missing_total_area_km2_is_stale(self):
-        row = {"green_area_pct": 35, "total_area_km2": None, "ndvi_min": 0.05}
+        row = {"green_area_pct": 35, "total_area_km2": None, "ndvi_min": 0.05,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is True
 
     def test_negative_ndvi_min_is_stale(self):
         # ndvi_min < -0.05 = cache เก่าก่อนยุค water mask
-        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": -0.2}
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": -0.2,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is True
 
     def test_ndvi_min_at_boundary_not_stale(self):
         # ndvi_min = -0.05 พอดี → ไม่ stale (เงื่อนไขเป็น <)
-        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": -0.05}
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": -0.05,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is False
 
     def test_ndvi_min_none_handled(self):
-        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": None}
+        row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": None,
+               "cache_version": CURRENT_CACHE_VERSION}
         assert _is_stale(row) is False
 
     def test_old_cache_version_is_stale(self):
@@ -57,9 +65,9 @@ class TestIsStale:
 
     def test_missing_cache_version_treated_as_1(self):
         # row จาก legacy schema (ไม่มี cache_version column) — default = 1
-        # ถ้า CURRENT_CACHE_VERSION = 1 → ไม่ stale
+        # CURRENT_CACHE_VERSION >= 2 (Cloud Score+) → 1 < current = stale
         row = {"green_area_pct": 35, "total_area_km2": 1234, "ndvi_min": 0.05}
-        assert _is_stale(row) is False
+        assert _is_stale(row) is (CURRENT_CACHE_VERSION > 1)
 
 
 # ── compute_who_status ────────────────────────────────────────────────────────

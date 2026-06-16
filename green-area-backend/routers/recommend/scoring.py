@@ -8,7 +8,7 @@ import ee
 from fastapi import HTTPException
 
 from dependencies import WORLDPOP_YEAR
-from gee_utils import mask_s2_clouds, get_lst_col
+from gee_utils import clean_s2_collection, get_lst_col
 from impact import IMPACT_DEFAULTS
 
 logger = logging.getLogger(__name__)
@@ -102,11 +102,11 @@ def compute_priority(geom: ee.Geometry, year: int,
     """คำนวณ Priority Score image (100m resolution) สำหรับ geometry ที่ระบุ"""
 
     # ── 1. NDVI ────────────────────────────────────────────────
-    s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-          .filterBounds(geom)
-          .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
-          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
-          .map(mask_s2_clouds))
+    s2 = clean_s2_collection(
+        ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+        .filterBounds(geom)
+        .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
     ndvi = s2.median().normalizedDifference(['B8', 'B4']).rename('NDVI')
 
     # NDVI deficit: NDVI < 0.3 = ขาดต้นไม้ (clamp 0-1)

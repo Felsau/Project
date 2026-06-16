@@ -28,12 +28,14 @@ WORLDPOP_YEAR = int(os.getenv("WORLDPOP_YEAR", "2020"))
 # Cache schema version — bump เมื่อเปลี่ยน compute logic ที่ทำให้ค่าเก่าไม่ valid
 # (เช่น เพิ่ม water mask, เปลี่ยน NDVI threshold)
 # _is_stale() จะถือว่า row ที่ cache_version < CURRENT_CACHE_VERSION = stale
-CURRENT_CACHE_VERSION = 1
+# v1 → v2: เปลี่ยน cloud masking จาก QA60 เป็น Cloud Score+ (gee_utils) → NDVI ทุกค่า
+#          ที่ cache ด้วย QA60 (โดยเฉพาะปี 2022–2024 ที่ QA60 ว่าง) ถือว่า stale
+CURRENT_CACHE_VERSION = 2
 
 # Recommend cache version — แยกจาก CURRENT_CACHE_VERSION (NDVI/LST/urban) เพราะ
 # compute logic ของ /recommend เปลี่ยนคนละจังหวะ · bump เมื่อแก้ priority/plantable/
-# impact logic ที่ทำให้ค่า cache เก่าไม่ valid · v1 = เพิ่ม plantability mask (ESA
-# WorldCover) · row เก่าก่อนมี mask ถูก migration 008 ตั้งเป็น 0 → ถือว่า stale
+# impact logic ที่ทำให้ค่า cache เก่าไม่ valid · v1 = plantability mask (ESA WorldCover)
+# + Cloud Score+ NDVI · row เก่าก่อน 2 ฟีเจอร์นี้ถูก migration 008 ตั้งเป็น 0 → stale
 RECOMMEND_CACHE_VERSION = 1
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']

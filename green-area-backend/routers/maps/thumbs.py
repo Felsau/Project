@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Response
 
 from dependencies import (get_province_geom, get_district_geom,
                           CURRENT_YEAR, YearParam, load_thailand_geojson_raw)
-from gee_utils import mask_s2_clouds, get_lst_col
+from gee_utils import clean_s2_collection, get_lst_col
 
 from ._cartography import (NDVI_PALETTE, LST_PALETTE,
                            fetch_thumb, bbox_dims, render_with_legend)
@@ -28,11 +28,11 @@ def ndvi_thumb(province_name: str, year: YearParam = CURRENT_YEAR,
         label = f"NDVI · {province_name} · {year}"
 
     geom = ee.Geometry(raw_geom)
-    col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-           .filterBounds(geom)
-           .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
-           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
-           .map(mask_s2_clouds))
+    col = clean_s2_collection(
+        ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+        .filterBounds(geom)
+        .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
 
     if col.size().getInfo() == 0:
         raise HTTPException(status_code=404, detail="ไม่พบภาพดาวเทียม")

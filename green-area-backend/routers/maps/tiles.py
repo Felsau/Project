@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 
 from dependencies import (get_province_geom, get_district_geom,
                           CURRENT_YEAR, YearParam, internal_error)
-from gee_utils import mask_s2_clouds, get_lst_col
+from gee_utils import clean_s2_collection, get_lst_col
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -63,11 +63,11 @@ def _resolve_geom(province_name: str, district_name: str | None) -> dict:
 
 
 def _ndvi_image(geom: ee.Geometry, year: int):
-    col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-           .filterBounds(geom)
-           .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
-           .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80))
-           .map(mask_s2_clouds))
+    col = clean_s2_collection(
+        ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+        .filterBounds(geom)
+        .filterDate(f'{year}-01-01', f'{year + 1}-01-01')  # end exclusive — รวม 31 ธ.ค.
+        .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
     if col.size().getInfo() == 0:
         return None
     return col.median().clip(geom).normalizedDifference(['B8', 'B4']).rename('NDVI')
