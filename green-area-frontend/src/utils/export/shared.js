@@ -31,7 +31,8 @@ const csvCell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-const rowsToCsv = (rows) =>
+// exported เพื่อ unit-test (formula-injection guard + quoting) — ดู shared.test.js
+export const rowsToCsv = (rows) =>
   rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 
 // UTF-8 BOM ทำให้ Excel เปิดภาษาไทยได้

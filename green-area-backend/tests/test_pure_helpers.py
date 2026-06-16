@@ -12,7 +12,11 @@ from routers.recommend import species as species_mod
 from routers.recommend.species import get_recommended_species
 from polygon_utils import (
     validate_polygon_geometry, polygon_area_km2, validate_drawn_polygon)
-from dependencies import _validate_geojson_path, CURRENT_CACHE_VERSION
+from dependencies import (_validate_geojson_path, CURRENT_CACHE_VERSION,
+                          ensure_province, ensure_district,
+                          get_province_geom, get_district_geom,
+                          PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES)
+from fastapi import HTTPException
 from impact import estimate_impact, IMPACT_DEFAULTS, TREE_CO2_PER_YEAR
 
 
@@ -214,6 +218,26 @@ class TestEstimateImpact:
         # 112 ตัน / 4.6 = 24.3
         assert out["equivalent_cars_off_road"] == round(112.0 / 4.6, 1)
 
+    def test_uncertainty_range_brackets_expected(self):
+        # potential 112 ตัน → low < expected < potential < high (รวมอัตรารอด+variance)
+        from impact import SURVIVAL_RATE, SURVIVAL_LOW, SURVIVAL_HIGH, SEQUESTRATION_VARIANCE
+        out = estimate_impact(100_000, [{"scientific": "Samanea saman", "name_th": "จามจุรี"}])
+        potential = out["annual_co2_tonnes"]            # 112.0
+        assert out["annual_co2_tonnes_expected"] == round(potential * SURVIVAL_RATE, 1)
+        assert out["annual_co2_tonnes_low"] == round(
+            potential * SURVIVAL_LOW * (1 - SEQUESTRATION_VARIANCE), 1)
+        assert out["annual_co2_tonnes_high"] == round(
+            potential * SURVIVAL_HIGH * (1 + SEQUESTRATION_VARIANCE), 1)
+        # ordering: low < expected < potential < high
+        assert (out["annual_co2_tonnes_low"] < out["annual_co2_tonnes_expected"]
+                < potential < out["annual_co2_tonnes_high"])
+
+    def test_uncertainty_zero_area_all_zero(self):
+        out = estimate_impact(0, [])
+        assert out["annual_co2_tonnes_low"] == 0
+        assert out["annual_co2_tonnes_expected"] == 0
+        assert out["annual_co2_tonnes_high"] == 0
+
     def test_methodology_includes_citations(self):
         out = estimate_impact(100_000, [])
         assert "methodology" in out
@@ -338,3 +362,82 @@ class TestRecommendedSpecies:
         # provinces ใน DB ให้ภาคต่างจาก hardcoded → ต้องใช้ค่าจาก DB
         monkeypatch.setattr(species_mod, "_db_region_map", lambda: {"Tak": "เหนือ"})
         assert get_recommended_species("Tak")["region"] == "เหนือ"  # hardcoded = ตะวันตก
+
+
+# ── province/district guards (ensure_* / get_*_geom) ──────────────────────────
+class TestGeometryGuards:
+    def _sample_province(self):
+        return next(iter(PROVINCE_GEOMETRIES))
+
+    def _sample_district(self):
+        # DISTRICT_GEOMETRIES key = (province, district) · อาจว่างถ้ายังไม่ generate
+        return next(iter(DISTRICT_GEOMETRIES), None)
+
+    def test_ensure_province_ok_for_valid(self):
+        ensure_province(self._sample_province())  # ไม่ควร raise
+
+    def test_ensure_province_404_for_invalid(self):
+        with pytest.raises(HTTPException) as e:
+            ensure_province("Atlantis")
+        assert e.value.status_code == 404
+
+    def test_get_province_geom_returns_dict(self):
+        geom = get_province_geom(self._sample_province())
+        assert isinstance(geom, dict)
+
+    def test_get_province_geom_404_for_invalid(self):
+        with pytest.raises(HTTPException) as e:
+            get_province_geom("Atlantis")
+        assert e.value.status_code == 404
+
+    def test_district_guards(self):
+        pair = self._sample_district()
+        if pair is None:
+            pytest.skip("ไม่มี DISTRICT_GEOMETRIES (ยังไม่ generate)")
+        prov, dist = pair
+        ensure_district(prov, dist)                       # valid → ไม่ raise
+        assert isinstance(get_district_geom(prov, dist), dict)
+        with pytest.raises(HTTPException) as e:
+            ensure_district(prov, "ไม่มีอำเภอนี้จริง")
+        assert e.value.status_code == 404
+        with pytest.raises(HTTPException):
+            get_district_geom(prov, "ไม่มีอำเภอนี้จริง")
+
+
+# ── rank_species_by_site ──────────────────────────────────────────────────────
+class TestSiteAwareSpecies:
+    SAMPLE = [
+        {"name_th": "ร่มเงา", "scientific": "Aa", "purpose": "ร่มเงาในเมือง",
+         "traits": ["ร่มเงากว้าง", "ลดความร้อนเมือง"], "reason": "ทรงพุ่มใหญ่"},
+        {"name_th": "ทนทาน", "scientific": "Bb", "purpose": "ฟื้นฟูดิน",
+         "traits": ["ทนแล้ง", "ตรึงไนโตรเจน"], "reason": "ปรับปรุงดินเสื่อม"},
+        {"name_th": "พื้นถิ่น", "scientific": "Cc", "purpose": "อนุรักษ์",
+         "traits": ["พันธุ์พื้นถิ่น", "อายุยืน"], "reason": "หายาก"},
+    ]
+
+    def test_no_signal_returns_unchanged(self):
+        # ไม่มี lst/ndvi → คืน list เดิม (ref เดิม)
+        assert species_mod.rank_species_by_site(self.SAMPLE) is self.SAMPLE
+
+    def test_hot_site_promotes_shade_species(self):
+        out = species_mod.rank_species_by_site(self.SAMPLE, lst_mean=38.0, ndvi_mean=0.45)
+        assert out[0]["scientific"] == "Aa"
+        assert out[0]["site_fit"] and "ร่มเงา" in out[0]["site_fit"]
+
+    def test_degraded_site_promotes_hardy_species(self):
+        out = species_mod.rank_species_by_site(self.SAMPLE, lst_mean=30.0, ndvi_mean=0.2)
+        assert out[0]["scientific"] == "Bb"
+        assert "เสื่อมโทรม" in out[0]["site_fit"]
+
+    def test_green_site_promotes_biodiversity_species(self):
+        out = species_mod.rank_species_by_site(self.SAMPLE, lst_mean=30.0, ndvi_mean=0.6)
+        assert out[0]["scientific"] == "Cc"
+
+    def test_does_not_mutate_original(self):
+        species_mod.rank_species_by_site(self.SAMPLE, lst_mean=38.0, ndvi_mean=0.2)
+        assert "site_fit" not in self.SAMPLE[0]
+
+    def test_get_recommended_species_with_metrics_annotates(self):
+        out = get_recommended_species("Bangkok Metropolis", lst_mean=38.0, ndvi_mean=0.45)
+        assert out["region"] is not None
+        assert any(s.get("site_fit") for s in out["species"])
