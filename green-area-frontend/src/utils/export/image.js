@@ -1,6 +1,7 @@
 // Image/PDF exports — จับภาพ DOM element เป็น PNG/PDF (และรวมกับแผนที่).
 import jsPDF from 'jspdf';
-import { ts, triggerDownload, captureElement } from './shared';
+import { ts, triggerDownload } from './shared';
+import { captureElement } from './capture';
 
 export const exportElementPng = async (elementId, filename) => {
   const el = document.getElementById(elementId);

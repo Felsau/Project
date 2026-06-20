@@ -2,7 +2,6 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { PROVINCE_TH, AVAILABLE_YEARS } from '../../constants';
 import { getNdviColor } from '../../colorUtils';
 import { exportCompareCsv } from '../../utils/exportUtils';
-import { buildCompareReport } from '../../utils/reportPdf';
 import Pill from '../ui/Pill';
 import ExportBar from '../ui/ExportBar';
 
@@ -112,7 +111,7 @@ export default function CompareTab({ data, handlers }) {
           targetId="export-compare"
           baseName={`compare_${compareYear}`}
           onCsv={() => exportCompareCsv({ compareData, compareYear, compareMetric })}
-          onPdf={() => buildCompareReport({ compareData, compareYear, compareMetric })}
+          onPdf={() => import('../../utils/reportPdf').then(m => m.buildCompareReport({ compareData, compareYear, compareMetric }))}
         />
       )}
     </div>

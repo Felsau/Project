@@ -1,6 +1,6 @@
-// Shared low-level helpers สำหรับ export (timestamp, download, CSV encode, canvas capture).
-import html2canvas from 'html2canvas';
-
+// Shared low-level helpers สำหรับ export (timestamp, download, CSV encode).
+// ห้าม import html2canvas/jspdf ที่นี่ — csv.js import ไฟล์นี้แบบ static จึงต้อง
+// เบาล้วน · canvas capture ย้ายไป capture.js (โหลด dynamic ผ่าน image.js)
 export const ts = () => {
   const d = new Date();
   const p = n => String(n).padStart(2, '0');
@@ -39,13 +39,4 @@ export const rowsToCsv = (rows) =>
 export const downloadCsv = (rows, filename) => {
   const csv = '﻿' + rowsToCsv(rows);
   triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), filename);
-};
-
-export const captureElement = async (element) => {
-  return html2canvas(element, {
-    backgroundColor: '#ffffff',
-    scale: 2,
-    useCORS: true,
-    logging: false,
-  });
 };

@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { AVAILABLE_YEARS } from '../../constants';
 import { exportTrendCsv } from '../../utils/exportUtils';
-import { buildTrendReport } from '../../utils/reportPdf';
 import Pill from '../ui/Pill';
 import ExportBar from '../ui/ExportBar';
 
@@ -138,7 +137,7 @@ export default function TrendTab({ data, handlers }) {
           targetId="export-trend"
           baseName={`trend_${selectedProvinceEN || 'province'}`}
           onCsv={() => exportTrendCsv({ selectedProvince, selectedProvinceEN, trendData, trendMetric })}
-          onPdf={() => buildTrendReport({ selectedProvince, selectedProvinceEN, trendData, trendMetric })}
+          onPdf={() => import('../../utils/reportPdf').then(m => m.buildTrendReport({ selectedProvince, selectedProvinceEN, trendData, trendMetric }))}
         />
       )}
     </div>

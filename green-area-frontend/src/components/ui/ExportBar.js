@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import { exportElementPng, exportTabWithMapPng } from '../../utils/exportUtils';
 import { pushError } from '../../utils/toast';
+
+// jspdf + html2canvas (~heavy) โหลดแบบ dynamic ตอนกดปุ่มเท่านั้น — ไม่อยู่ใน
+// main bundle · run() มี await + busy spinner รองรับ promise ของ import() อยู่แล้ว
+const loadImageExport = () => import('../../utils/export/image');
 
 export default function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap = true }) {
   const [busy, setBusy] = useState(null);
@@ -28,7 +31,10 @@ export default function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap
           </button>
         )}
         <button className="export-btn" disabled={!!busy}
-          onClick={() => run('png', () => exportElementPng(targetId, `${baseName}.png`))}>
+          onClick={() => run('png', async () => {
+            const { exportElementPng } = await loadImageExport();
+            return exportElementPng(targetId, `${baseName}.png`);
+          })}>
           {busy === 'png' ? '…' : 'PNG'}
         </button>
         {onPdf && (
@@ -39,7 +45,10 @@ export default function ExportBar({ targetId, baseName, onCsv, onPdf, includeMap
         )}
         {includeMap && (
           <button className="export-btn" disabled={!!busy}
-            onClick={() => run('map', () => exportTabWithMapPng(targetId, `${baseName}_with_map.png`))}>
+            onClick={() => run('map', async () => {
+              const { exportTabWithMapPng } = await loadImageExport();
+              return exportTabWithMapPng(targetId, `${baseName}_with_map.png`);
+            })}>
             {busy === 'map' ? '…' : 'PNG + แผนที่'}
           </button>
         )}

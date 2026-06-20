@@ -1,8 +1,6 @@
 import { rowsToCsv, ts } from './shared';
 
-// html2canvas ถูก import ใน shared.js (ใช้ใน captureElement ที่เราไม่ได้เทส) — mock กัน
-// side-effect · jest hoist vi.mock ขึ้นเหนือ import ให้อัตโนมัติ
-vi.mock('html2canvas', () => ({ __esModule: true, default: vi.fn() }));
+// shared.js เบาล้วน (ไม่ import html2canvas/jspdf แล้ว) — ไม่ต้อง mock side-effect
 
 describe('rowsToCsv — formula-injection guard', () => {
   it('prefix \' ให้ cell ที่ขึ้นต้นด้วย = + @ (กัน CSV injection)', () => {

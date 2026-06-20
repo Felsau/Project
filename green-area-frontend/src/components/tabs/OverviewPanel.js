@@ -1,6 +1,5 @@
 import { PROVINCE_TH, AVAILABLE_YEARS } from '../../constants';
 import { exportRankingCsv } from '../../utils/exportUtils';
-import { buildRankingReport } from '../../utils/reportPdf';
 import ExportBar from '../ui/ExportBar';
 import { Note } from '../ui/Metric';
 
@@ -174,7 +173,7 @@ export default function OverviewPanel({ data, handlers }) {
           targetId="export-ranking"
           baseName={`ranking_${rankingYear}`}
           onCsv={() => exportRankingCsv({ rankingData, rankingYear, rankingStats })}
-          onPdf={() => buildRankingReport({ rankingData, rankingYear, rankingStats })}
+          onPdf={() => import('../../utils/reportPdf').then(m => m.buildRankingReport({ rankingData, rankingYear, rankingStats }))}
         />
       )}
     </div>

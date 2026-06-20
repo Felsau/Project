@@ -1,6 +1,5 @@
 import { getNdviLabel, getLstLabel } from '../../colorUtils';
 import { exportStatsCsv } from '../../utils/exportUtils';
-import { buildStatsReport } from '../../utils/reportPdf';
 import Accordion from '../ui/Accordion';
 import { Figure, KVRow, KV, Note } from '../ui/Metric';
 import ExportBar from '../ui/ExportBar';
@@ -202,13 +201,13 @@ export default function StatsTab({ data, handlers }) {
           ndviStats, ndviMonthly, lstStats, lstMonthly,
           districtNdviStats, districtNdviMonthly, districtLstStats, districtLstMonthly,
         })}
-        onPdf={() => buildStatsReport({
+        onPdf={() => import('../../utils/reportPdf').then(m => m.buildStatsReport({
           selectedProvince, selectedProvinceEN, selectedDistrict, selectedDistrictEN,
           provinceArea, districtArea,
           ndviStats, ndviMonthly, lstStats, lstMonthly,
           districtNdviStats, districtNdviMonthly,
           districtLstStats, districtLstMonthly,
-        })}
+        }))}
       />
     </div>
   );

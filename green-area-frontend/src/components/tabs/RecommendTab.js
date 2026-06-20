@@ -1,6 +1,5 @@
 import { AVAILABLE_YEARS } from '../../constants';
 import { exportRecommendCsv } from '../../utils/exportUtils';
-import { buildRecommendReport } from '../../utils/reportPdf';
 import ExportBar from '../ui/ExportBar';
 import { Note } from '../ui/Metric';
 import ImpactSection from './recommend/ImpactSection';
@@ -175,7 +174,7 @@ export default function RecommendTab({ data, handlers }) {
           targetId="export-recommend"
           baseName={`recommend_${(selectedDistrictEN || selectedProvinceEN || 'thailand').replace(/\s+/g, '_')}`}
           onCsv={() => exportRecommendCsv({ recommendData, selectedProvinceEN, selectedDistrict, selectedDistrictEN })}
-          onPdf={() => buildRecommendReport({ recommendData, selectedProvince, selectedProvinceEN, selectedDistrict, selectedDistrictEN })}
+          onPdf={() => import('../../utils/reportPdf').then(m => m.buildRecommendReport({ recommendData, selectedProvince, selectedProvinceEN, selectedDistrict, selectedDistrictEN }))}
         />
       )}
     </div>
