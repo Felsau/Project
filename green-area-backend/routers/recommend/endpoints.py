@@ -116,9 +116,9 @@ def _run_recommendation(province_name: str, district_name: str | None,
     try:
         geom = ee.Geometry(raw_geom)
         assert_imagery_available(geom, year)
-        priority, _, _, _, plantable = compute_priority(geom, year, w_ndvi, w_lst, w_pop)
+        priority, ndvi_deficit, lst_heat, pop_need, plantable = compute_priority(geom, year, w_ndvi, w_lst, w_pop)
         tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, geom, plantable, n=10)
+        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, geom, plantable, n=10)
         plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
         impact = estimate_impact(plantable_m2, species_info.get("species", []))
 
@@ -210,9 +210,9 @@ def recommend_custom_area(req: CustomAreaRecommendRequest):
     try:
         geom = ee.Geometry(req.geometry)
         assert_imagery_available(geom, req.year)
-        priority, _, _, _, plantable = compute_priority(geom, req.year, w_ndvi, w_lst, w_pop)
+        priority, ndvi_deficit, lst_heat, pop_need, plantable = compute_priority(geom, req.year, w_ndvi, w_lst, w_pop)
         tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, geom, plantable, n=10)
+        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, geom, plantable, n=10)
         plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
         impact = estimate_impact(plantable_m2, species_info.get("species", []))
         return {

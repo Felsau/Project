@@ -47,20 +47,27 @@ def normalize_weights(w_ndvi: float, w_lst: float, w_pop: float) -> tuple[float,
 #       ถ้าต้องการนับเฉพาะที่ว่างจริง เพิ่ม 40 ลงใน tuple นี้
 ESA_NON_PLANTABLE_CLASSES = (10, 50, 70, 80, 90, 95, 100)
 
+# ความชันสูงสุดที่ยังปลูกได้ (องศา) — เกินนี้ = ลาดชันมาก ปลูกยาก/ดินสไลด์/กล้าไม่รอด
+# 30° ≈ 58% grade · ตัดหน้าผา/ภูเขาชันออก แต่ยังคงเนินเขาทั่วไป · คำนวณจาก SRTM 30m
+MAX_SLOPE_DEG = 30
+
 
 def plantable_mask(geom: ee.Geometry) -> ee.Image:
-    """คืน mask (1 = ปลูกได้, ที่เหลือถูก mask) จาก ESA WorldCover v200.
+    """คืน mask (1 = ปลูกได้, ที่เหลือถูก mask) จาก ESA WorldCover v200 + ความชัน SRTM.
 
-    ใช้กรอง top-locations + plantable-area ไม่ให้แนะนำปลูกบนน้ำ อาคาร ป่าเดิม หรือ
-    พื้นที่ชุ่มน้ำ · ไม่ใช้ mask นี้กับ priority heatmap (heatmap ยังโชว์ "ความต้องการ"
-    ทั่วพื้นที่) · WorldCover เป็น global mosaic ปี 2021 ครอบคลุมทั้งไทย
+    ใช้กรอง top-locations + plantable-area ไม่ให้แนะนำปลูกบนน้ำ อาคาร ป่าเดิม พื้นที่
+    ชุ่มน้ำ หรือพื้นที่ลาดชันเกิน · ไม่ใช้ mask นี้กับ priority heatmap (heatmap ยังโชว์
+    "ความต้องการ" ทั่วพื้นที่) · WorldCover/SRTM เป็น global ครอบคลุมทั้งไทย
     """
     wc = ee.ImageCollection("ESA/WorldCover/v200").first().clip(geom)
     non_plantable = ee.Image.constant(0)
     for code in ESA_NON_PLANTABLE_CLASSES:
         non_plantable = non_plantable.Or(wc.eq(code))
+    landcover_ok = non_plantable.Not()
+    # ความชัน — ตัดพื้นที่ลาดชันเกิน MAX_SLOPE_DEG (ปลูกยาก/ดินสไลด์)
+    slope_ok = ee.Terrain.slope(ee.Image('USGS/SRTMGL1_003')).lte(MAX_SLOPE_DEG)
     # selfMask() → 0 (ปลูกไม่ได้) ถูก mask, เหลือเฉพาะ pixel ค่า 1 ที่ปลูกได้
-    return non_plantable.Not().selfMask().rename('plantable')
+    return landcover_ok.And(slope_ok).selfMask().rename('plantable')
 
 
 def assert_imagery_available(geom: ee.Geometry, year: int) -> None:
@@ -158,13 +165,16 @@ def compute_priority(geom: ee.Geometry, year: int,
     return priority, ndvi_deficit, lst_heat, pop_need, plantable
 
 
-def get_top_locations(priority: ee.Image, geom: ee.Geometry,
-                      plantable: ee.Image, n: int = 10):
+def get_top_locations(priority: ee.Image, ndvi_deficit: ee.Image,
+                      lst_heat: ee.Image, pop_need: ee.Image,
+                      geom: ee.Geometry, plantable: ee.Image, n: int = 10):
     """หา top-n pixels ที่มี priority สูงสุด — เฉพาะบนพื้นที่ที่ปลูกได้จริง.
 
-    updateMask(plantable) ก่อน sample → ไม่คืนจุดบนน้ำ/อาคาร/ป่าเดิม
-    (dropNulls=True ตัด pixel ที่ถูก mask ออกอยู่แล้ว)"""
-    samples = (priority.updateMask(plantable)
+    sample แบบ multi-band (priority + 3 องค์ประกอบ) ที่จุดเดียวกัน → คืน `factors`
+    ของแต่ละจุด (ขาดต้นไม้/ร้อน/คนหนาแน่น) เพื่ออธิบายว่า "ทำไม" จุดนี้คะแนนสูง.
+    updateMask(plantable) ก่อน sample → ไม่คืนจุดบนน้ำ/อาคาร/ป่าเดิม/ที่ชัน"""
+    stack = priority.addBands([ndvi_deficit, lst_heat, pop_need])
+    samples = (stack.updateMask(plantable)
                .sample(region=geom, scale=200, numPixels=2000,
                        geometries=True, dropNulls=True)
                .sort('priority', False)
@@ -173,11 +183,16 @@ def get_top_locations(priority: ee.Image, geom: ee.Geometry,
     results = []
     for feat in info.get('features', []):
         coords = feat['geometry']['coordinates']
-        score = feat['properties'].get('priority', 0)
+        p = feat['properties']
         results.append({
             'lng': round(coords[0], 5),
             'lat': round(coords[1], 5),
-            'score': round(float(score), 3),
+            'score': round(float(p.get('priority', 0)), 3),
+            'factors': {
+                'ndvi_deficit': round(float(p.get('ndvi_deficit', 0)), 2),
+                'lst_heat': round(float(p.get('lst_heat', 0)), 2),
+                'pop_need': round(float(p.get('pop_need', 0)), 2),
+            },
         })
     return results
 

@@ -12,6 +12,20 @@ const WEIGHT_SLIDERS = [
   { key: 'pop',  label: 'ประชากร' },
 ];
 
+// อธิบายว่า top-spot แต่ละจุดคะแนนสูงเพราะอะไร (factors จาก backend, ค่า 0–1)
+const FACTOR_LABELS = {
+  ndvi_deficit: 'ขาดต้นไม้',
+  lst_heat: 'ร้อนกว่าเฉลี่ย',
+  pop_need: 'ชุมชนหนาแน่น',
+};
+
+const factorText = (factors) =>
+  Object.entries(factors)
+    .filter(([k]) => FACTOR_LABELS[k])
+    .sort((a, b) => b[1] - a[1])            // เด่นสุดก่อน
+    .map(([k, v]) => `${FACTOR_LABELS[k]} ${v.toFixed(1)}`)
+    .join(' · ');
+
 export default function RecommendTab({ data, handlers }) {
   const {
     selectedProvince, selectedProvinceEN, selectedDistrict, selectedDistrictEN,
@@ -120,10 +134,16 @@ export default function RecommendTab({ data, handlers }) {
                   href={`https://www.google.com/maps?q=${p.lat},${p.lng}`}
                   target="_blank" rel="noreferrer"
                   className="loc-row"
+                  style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}
                 >
-                  <span className="loc-row__rank">{String(i + 1).padStart(2, '0')}</span>
-                  <span className="loc-row__coord">{p.lat.toFixed(4)}, {p.lng.toFixed(4)}</span>
-                  <span className="loc-row__score">{p.score.toFixed(2)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="loc-row__rank">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="loc-row__coord">{p.lat.toFixed(4)}, {p.lng.toFixed(4)}</span>
+                    <span className="loc-row__score" style={{ marginLeft: 'auto' }}>{p.score.toFixed(2)}</span>
+                  </div>
+                  {p.factors && (
+                    <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{factorText(p.factors)}</div>
+                  )}
                 </a>
               )) : (
                 <div className="helper">ไม่พบจุดที่เหมาะสม</div>
