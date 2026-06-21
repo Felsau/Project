@@ -1,7 +1,7 @@
 import { PROVINCE_TH } from '../constants';
 import { fmtArea } from '../utils/formatArea';
 
-// Floating panel — รายการพื้นที่ที่บันทึกไว้ (shared) · โหลดกลับบนแผนที่ / ลบของตัวเอง
+// Floating panel — รายการพื้นที่ที่บันทึกไว้ (ของผู้ใช้คนนี้) · โหลดกลับบนแผนที่ / ลบของตัวเอง
 const fmtDate = (iso) => {
   if (!iso) return '';
   try { return new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }); }

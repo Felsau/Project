@@ -535,12 +535,39 @@ class TestSavedAreas:
                 {"id": 1, "label": "A", "owner_token": "mine", "geometry": {}},
                 {"id": 2, "label": "B", "owner_token": "other", "geometry": {}},
             ]))
-        r = c.get("/saved-areas", headers={"X-Owner-Token": "mine"})
+        r = c.get("/saved-areas?shared=true", headers={"X-Owner-Token": "mine"})
         assert r.status_code == 200
         rows = r.json()["data"]
         assert all("owner_token" not in row for row in rows)
         assert rows[0]["mine"] is True
         assert rows[1]["mine"] is False
+
+    def test_list_without_owner_token_returns_empty(self, client, monkeypatch):
+        # privacy default: ไม่มี owner token + ไม่ขอ shared → คืนว่าง โดยไม่แตะ DB
+        c, _ = client
+        called = {"hit": False}
+        def _boom(fn, **kw):
+            called["hit"] = True
+            return _fake_response([{"id": 1, "owner_token": "someone", "geometry": {}}])
+        monkeypatch.setattr("routers.saved.supa_call", _boom)
+        r = c.get("/saved-areas")
+        assert r.status_code == 200
+        assert r.json()["data"] == []
+        assert called["hit"] is False        # ไม่ query DB เลย
+
+    def test_list_shared_returns_all_without_token(self, client, monkeypatch):
+        # ?shared=true → public gallery: คืนของทุกคนแม้ไม่มี owner token
+        c, _ = client
+        monkeypatch.setattr("routers.saved.supa_call",
+            lambda fn, **kw: _fake_response([
+                {"id": 1, "label": "A", "owner_token": "a", "geometry": {}},
+                {"id": 2, "label": "B", "owner_token": "b", "geometry": {}},
+            ]))
+        r = c.get("/saved-areas?shared=true")
+        assert r.status_code == 200
+        rows = r.json()["data"]
+        assert len(rows) == 2
+        assert all(row["mine"] is False for row in rows)   # ไม่มี token → ไม่มีของฉัน
 
     # ── delete authorization ──
     def test_delete_not_found_returns_404(self, client, monkeypatch):

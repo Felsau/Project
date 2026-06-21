@@ -4,7 +4,10 @@
 
 Ownership แบบเบา (แอปยังไม่มี login):
   - frontend สร้าง UUID เก็บใน localStorage แล้วส่งมาทาง header `X-Owner-Token`
-  - GET คืน list แบบ shared (ทุกคนเห็น) พร้อม flag `mine` ที่ตัดสินฝั่ง server
+  - GET /saved-areas (list) default คืน *เฉพาะของเจ้าของ* (privacy) — polygon ที่ผู้ใช้
+    วาด อาจเป็นที่ดิน/บ้านตัวเอง ไม่ควรให้คนอื่นเห็นพิกัดโดย default
+  - ?shared=true → คืนรวมของทุกคน (public gallery) พร้อม flag `mine` ที่ตัดสินฝั่ง server
+  - GET /saved-areas/{id} ยังเปิดให้ดึงรายตัวได้ → ใช้เป็นช่องทาง "แชร์ด้วยลิงก์/ไอดี"
   - DELETE ทำได้เฉพาะเจ้าของ (owner token ตรง) หรือ admin (X-Admin-Token ตรง)
   - response ไม่เคย leak owner_token ออกไป
 """
@@ -72,13 +75,23 @@ def create_saved_area(req: SavedAreaCreate,
 
 @router.get("/saved-areas")
 def list_saved_areas(province: str | None = None,
+                     shared: bool = False,
                      x_owner_token: str | None = Header(default=None)):
-    """รายการพื้นที่ที่บันทึก (shared, ใหม่สุดก่อน) — คืน geometry ด้วยเพื่อโหลดกลับบนแผนที่
-    แต่ไม่คืน analysis/recommendation ที่หนัก (ดึงเต็มที่ GET /saved-areas/{id})"""
+    """รายการพื้นที่ที่บันทึก (ใหม่สุดก่อน) — คืน geometry ด้วยเพื่อโหลดกลับบนแผนที่
+    แต่ไม่คืน analysis/recommendation ที่หนัก (ดึงเต็มที่ GET /saved-areas/{id}).
+
+    Privacy: default คืนเฉพาะพื้นที่ของ owner token นี้ · ?shared=true → คืนรวมทุกคน
+    (กรอง owner ที่ระดับ query ใช้ index idx_saved_areas_owner)"""
+    # ไม่มี owner token + ไม่ขอ shared → ไม่มีตัวตนให้กรอง คืน list ว่าง (กัน leak โดยไม่ตั้งใจ)
+    if not shared and not x_owner_token:
+        return {"data": []}
+
     def _q(s):
         q = (s.table("saved_areas")
              .select("id,label,year,area_km2,province,geometry,owner_token,created_at")
              .order("created_at", desc=True).limit(200))
+        if not shared:
+            q = q.eq("owner_token", x_owner_token)
         if province:
             q = q.eq("province", province)
         return q.execute()
