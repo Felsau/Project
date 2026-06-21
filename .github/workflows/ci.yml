@@ -39,7 +39,7 @@ jobs:
         continue-on-error: true
 
   frontend:
-    name: Frontend tests (react-scripts)
+    name: Frontend tests (Vitest)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,7 +57,5 @@ jobs:
         run: npx eslint src --max-warnings 0
       - name: Run tests
         run: npm test
-        env:
-          CI: true
       - name: Build (vite)
         run: npm run build

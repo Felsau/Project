@@ -14,9 +14,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # CRA (react-scripts 5) ตรึง toolchain ไว้ — major bump ของ dev-deps มักพังทั้ง build
-    ignore:
-      - dependency-name: react-scripts
 
   - package-ecosystem: github-actions
     directory: /

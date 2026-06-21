@@ -58,12 +58,13 @@ API docs interactive: `http://localhost:8000/docs`
 - ทุก endpoint ที่ trigger GEE compute ราคาแพง → check cache ก่อน
 - Cache key = `(province, district?, year)` — district nullable
 - Stale check ใน `routers/ndvi/compute.py::_is_stale` — invalidate row ที่คำนวณก่อนยุค water mask
-- AI Recommend tile URL หมดอายุพร้อม GEE session — มี in-process TTL cache 30 นาที
-  (`routers/recommend/tile_cache.py::_TILE_URL_CACHE`) ลดต้นทุน cache hit จาก ~30s → <50ms
+- AI Recommend + raster overlay tile URL หมดอายุพร้อม GEE session — มี in-process TTL
+  cache 30 นาที (thread-safe `ttl_cache.py::TTLCache` ใช้ร่วมกันทั้ง
+  `routers/recommend/tile_cache.py` และ `routers/maps/tiles.py`) ลดต้นทุน cache hit จาก ~30s → <50ms
 
 ## Tests
 
-มี test **114 ตัว** — รันด้วย `.venv/bin/pytest tests/ -v` (รันใน CI ทุก push/PR · ดู
+รันด้วย `.venv/bin/pytest tests/ -v` (รันใน CI ทุก push/PR · ดู
 `../.github/workflows/ci.yml`)
 
 | ไฟล์ | ครอบคลุม |
@@ -71,6 +72,7 @@ API docs interactive: `http://localhost:8000/docs`
 | `tests/test_stats_utils.py` | `linregress` (slope/r) + Mann-Kendall trend significance + `forecast_linear` (OLS projection + 95% prediction interval) |
 | `tests/test_pure_helpers.py` | `_is_stale` (cache invalidation), WHO status (9 m²/คน), normalize weights, validate geojson path, estimate impact (จำนวนต้นไม้ / cooling / CO₂ / รถยนต์ + สัมประสิทธิ์พันธุ์ไม้ไทย), validate polygon + geodesic area (custom-area) |
 | `tests/test_endpoints.py` | API endpoints (`/`, `/compare`, `/cache`, `/analysis/ranking`, `/timelapse` ทั้ง NDVI/LST, `/analysis/cooling`, POST `/analysis/custom-area` + `/recommend/custom-area` validation, `/saved-areas` CRUD + ownership/admin auth, DELETE `/cache`) ผ่าน FastAPI `TestClient` + mock `supa_call` |
+| `tests/test_ttl_cache.py` | `TTLCache` (shared tile-URL cache) — hit/miss, TTL expiry, size-bounded eviction, thread-safe concurrent `set()` |
 
 Pure helpers ทดสอบได้โดยไม่ต้องมี credential · endpoint tests mock ทุก call ไป
 Supabase/GEE จึงไม่แตะ external service จริง

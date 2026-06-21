@@ -126,11 +126,11 @@ green-area-frontend/
 ## Tests
 
 ```powershell
-# Frontend (40 tests · 5 suites)
+# Frontend (Vitest)
 cd green-area-frontend
-npm test -- --watchAll=false
+npm test
 
-# Backend (82 tests · pytest)
+# Backend (pytest)
 cd green-area-backend
 pytest tests/ -v
 ```
