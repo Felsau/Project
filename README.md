@@ -45,6 +45,8 @@
   - `005_create_saved_areas.sql` (ตาราง saved_areas — บันทึก polygon ที่วาดเอง + ผลวิเคราะห์)
   - `006_create_provinces.sql` (ตารางอ้างอิง provinces + seed 77 จังหวัด + FK — normalize ชื่อไทย/ภาค)
   - `007_create_districts.sql` (ตารางอ้างอิง districts + seed 928 อำเภอ + พื้นที่ + composite FK)
+  - `008_recommend_cache_version.sql` (cache_version ใน planting_recommendations — invalidate row ก่อนมี plantability mask)
+  - `009_add_population_year.sql` (เพิ่ม population_year ใน ndvi_annual — บอกปีประชากรที่ใช้คำนวณ m²/คน)
 - เอา `URL` และ `service_role` key จากหน้า Project Settings → API
 
 ### 2) Backend

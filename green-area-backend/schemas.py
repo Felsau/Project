@@ -25,6 +25,7 @@ class NDVIResponse(BaseModel):
     total_area_km2: Optional[float] = None
     green_area_m2_per_person: Optional[float] = None
     population: Optional[int] = None
+    population_year: Optional[int] = None   # ปีของข้อมูลประชากร — อาจต่างจาก year ถ้า fallback
     who_status: Optional[str] = None
     from_cache: bool
 

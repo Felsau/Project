@@ -13,7 +13,7 @@ from routers.recommend.species import get_recommended_species
 from polygon_utils import (
     validate_polygon_geometry, polygon_area_km2, validate_drawn_polygon)
 from dependencies import (_validate_geojson_path, CURRENT_CACHE_VERSION,
-                          ensure_province, ensure_district,
+                          ensure_province, ensure_district, get_population,
                           get_province_geom, get_district_geom,
                           PROVINCE_GEOMETRIES, DISTRICT_GEOMETRIES)
 from fastapi import HTTPException
@@ -441,3 +441,32 @@ class TestSiteAwareSpecies:
         out = get_recommended_species("Bangkok Metropolis", lst_mean=38.0, ndvi_mean=0.45)
         assert out["region"] is not None
         assert any(s.get("site_fit") for s in out["species"])
+
+
+# ── get_population — fallback ต้องบอก "ปีจริง" ของประชากรที่ใช้ ─────────────────
+class _PopResp:
+    def __init__(self, data):
+        self.data = data
+
+
+class TestGetPopulation:
+    def test_exact_year_returns_population_and_same_year(self, monkeypatch):
+        # ปีที่ขอมีข้อมูลตรง → คืนปีนั้นเป๊ะ
+        monkeypatch.setattr("dependencies.supa_call",
+            lambda fn, **kw: _PopResp([{"population": 1_500_000, "year": 2020}]))
+        assert get_population("Bangkok Metropolis", 2020) == (1_500_000, 2020)
+
+    def test_missing_year_falls_back_to_latest_and_reports_that_year(self, monkeypatch):
+        # ปีที่ขอไม่มี → fallback ปีล่าสุด *และคืนปีจริง* (ไม่ใช่ปีที่ขอ)
+        responses = iter([
+            _PopResp([]),                                       # ขอ 2024 → ไม่มี
+            _PopResp([{"population": 1_400_000, "year": 2022}]),  # fallback ปีล่าสุด
+        ])
+        monkeypatch.setattr("dependencies.supa_call",
+            lambda fn, **kw: next(responses))
+        assert get_population("Bangkok Metropolis", 2024) == (1_400_000, 2022)
+
+    def test_no_data_returns_none_none(self, monkeypatch):
+        monkeypatch.setattr("dependencies.supa_call",
+            lambda fn, **kw: _PopResp([]))
+        assert get_population("Nowhere", 2020) == (None, None)

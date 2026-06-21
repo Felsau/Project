@@ -182,6 +182,7 @@ def get_ndvi(province_name: str, year: YearParam = CURRENT_YEAR):
                 "total_area_km2": row.get("total_area_km2"),
                 "green_area_m2_per_person": row.get("green_area_m2_per_person"),
                 "population": row.get("population"),
+                "population_year": row.get("population_year"),
                 "who_status": row.get("who_status"),
                 "from_cache": True, "cached_at": row["created_at"],
             }
@@ -194,12 +195,13 @@ def get_ndvi(province_name: str, year: YearParam = CURRENT_YEAR):
                 detail=f"ไม่พบข้อมูลภาพดาวเทียมสำหรับ {province_name} ในปี {year}")
 
         green_area_m2 = result.pop('green_area_m2_raw', None)
-        population = get_population(province_name, year)
+        population, population_year = get_population(province_name, year)
         m2_per_person, who_status = compute_who_status(green_area_m2, population)
 
         full = {**result,
                 "green_area_m2_per_person": m2_per_person,
-                "population": population, "who_status": who_status}
+                "population": population, "population_year": population_year,
+                "who_status": who_status}
 
         supa_call(lambda s: s.table("ndvi_annual").insert({
             "province": province_name, "year": year, **full,

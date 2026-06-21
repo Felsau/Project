@@ -144,6 +144,12 @@ export default function StatsTab({ data, handlers }) {
                 hint={ndviStats?.who_status || null}
               />
             </KVRow>
+            {/* ประชากร fallback: m²/คน อ้างอิงประชากรคนละปีกับ NDVI — บอกปีจริงให้ผู้ใช้รู้ */}
+            {ndviStats?.population_year != null && ndviStats.population_year !== ndviStats.year && (
+              <div className="helper" style={{ marginTop: 4 }}>
+                * “ต่อหัวประชากร” คำนวณจากประชากรปี {ndviStats.population_year} (ปี {ndviStats.year} ยังไม่มีข้อมูลประชากร)
+              </div>
+            )}
             {!selectedDistrict && ndviMonthly.length > 0 && (
               <div>
                 <div className="label">NDVI รายเดือน</div>

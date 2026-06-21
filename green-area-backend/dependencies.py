@@ -120,22 +120,30 @@ def supa_call(builder_fn, retries: int = 1):
     raise last_exc  # type: ignore[misc]
 
 
-def get_population(province_name: str, year: int):
-    # ใช้ supa_call เพื่อให้ได้ retry-on-disconnect — ไม่ต้องรับ Client มาเองแล้ว
+def get_population(province_name: str, year: int) -> tuple[int | None, int | None]:
+    """คืน (population, population_year) ของจังหวัด.
+
+    ถ้าปีที่ขอไม่มีใน province_population → fallback ไปปีล่าสุดที่มี แล้ว *คืนปีจริง*
+    ที่ใช้มาด้วย เพื่อให้ caller บอกผู้ใช้ได้ว่า m²/คน คำนวณบนประชากรปีไหน (NDVI อาจ
+    เป็นคนละปี เช่น ขอ NDVI 2024 แต่ประชากรมีถึง 2022) · คืน (None, None) ถ้าไม่มี
+    ข้อมูลประชากรของจังหวัดนี้เลย
+    ใช้ supa_call เพื่อให้ได้ retry-on-disconnect — ไม่ต้องรับ Client มาเองแล้ว"""
     result = supa_call(lambda s: s.table("province_population")
                        .select("population,year")
                        .eq("province", province_name)
                        .eq("year", year)
                        .execute())
     if result.data:
-        return result.data[0]["population"]
+        return result.data[0]["population"], year
     fallback = supa_call(lambda s: s.table("province_population")
                          .select("population,year")
                          .eq("province", province_name)
                          .order("year", desc=True)
                          .limit(1)
                          .execute())
-    return fallback.data[0]["population"] if fallback.data else None
+    if fallback.data:
+        return fallback.data[0]["population"], fallback.data[0]["year"]
+    return None, None
 
 
 BACKEND_ROOT = os.path.dirname(os.path.abspath(__file__))
