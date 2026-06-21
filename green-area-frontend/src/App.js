@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
-import { FlyToInterpolator, WebMercatorViewport } from '@deck.gl/core';
+import { FlyToInterpolator } from '@deck.gl/core';
 import Map from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './App.css';
 
 import * as turf from '@turf/turf';
-import { MAP_STYLE, MAP_STYLE_DARK, INITIAL_VIEW_STATE, PROVINCE_TH, CURRENT_YEAR, AVAILABLE_YEARS } from './constants';
+import { MAP_STYLE, MAP_STYLE_DARK, INITIAL_VIEW_STATE, PROVINCE_TH, CURRENT_YEAR } from './constants';
 import { useNdviCache }    from './hooks/useNdviCache';
 import { useProvinceData } from './hooks/useProvinceData';
 import { useDistrictData } from './hooks/useDistrictData';
@@ -20,14 +20,15 @@ import { useCoverageCompute } from './hooks/useCoverageCompute';
 import { useRasterOverlay } from './hooks/useRasterOverlay';
 import { useSwipeCompare } from './hooks/useSwipeCompare';
 import { useAreaTools }   from './hooks/useAreaTools';
-import { buildMapLayers }  from './utils/mapLayers';
-import { swipeLayers }     from './utils/mapLayers/swipeLayer';
-import { drawLayers }      from './utils/mapLayers/drawLayer';
-import { recommendLayers } from './utils/mapLayers/recommendLayers';
+import { useTheme }          from './hooks/useTheme';
+import { useLandingGate }    from './hooks/useLandingGate';
+import { useCanvasViewport } from './hooks/useCanvasViewport';
+import { useMapLayers }      from './hooks/useMapLayers';
 import Sidebar    from './components/Sidebar';
 import AppHeader  from './components/AppHeader';
 import MapTooltip from './components/MapTooltip';
 import MapLegend  from './components/MapLegend';
+import MapOverlayControls from './components/MapOverlayControls';
 import Toast      from './components/Toast';
 import TimelapsePlayer from './components/TimelapsePlayer';
 import AboutModal from './components/AboutModal';
@@ -35,10 +36,6 @@ import Landing from './components/Landing';
 import DrawControl from './components/DrawControl';
 import SavedAreasPanel from './components/SavedAreasPanel';
 import { pushError } from './utils/toast';
-
-// Stable empty layer array so panning while swipe is OFF doesn't churn the
-// combined `layers` memo.
-const EMPTY_LAYERS = [];
 
 // Sidebar tab ids — whitelist for the ?tab= deep-link param (mirrors Sidebar TABS)
 const TAB_IDS = ['stats', 'trend', 'cooling', 'compare', 'recommend'];
@@ -51,30 +48,11 @@ function App() {
   const [sidebarTab, setSidebarTab]     = useState('stats');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showAbout, setShowAbout]       = useState(false);
-  const [canvasSize, setCanvasSize]     = useState({ w: 0, h: 0 });
-  const canvasRef = useRef(null);
-  const [theme, setTheme] = useState(() => {
-    const saved = typeof localStorage !== 'undefined' && localStorage.getItem('theme');
-    if (saved === 'light' || saved === 'dark') return saved;
-    // Default to light; users can switch to dark via the toggle (persisted).
-    return 'light';
-  });
+  const { theme, toggleTheme } = useTheme();
 
   // Landing gate — shown once per browser session. Shared deep-links
   // (?p= ?d= ?tab= ?year=) must keep opening the dashboard directly.
-  const [showLanding, setShowLanding] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (['p', 'd', 'tab', 'year'].some(k => params.has(k))) return false;
-    try { return sessionStorage.getItem('landing-seen') !== '1'; } catch { return true; }
-  });
-  const enterDashboard = useCallback(() => {
-    try { sessionStorage.setItem('landing-seen', '1'); } catch { /* storage blocked — ignore */ }
-    setShowLanding(false);
-  }, []);
-  const goToLanding = useCallback(() => {
-    try { sessionStorage.removeItem('landing-seen'); } catch { /* storage blocked — ignore */ }
-    setShowLanding(true);
-  }, []);
+  const { showLanding, enterDashboard, goToLanding } = useLandingGate();
 
   const { ndviCache, setNdviCache } = useNdviCache();
   const province = useProvinceData({ setNdviCache });
@@ -99,6 +77,9 @@ function App() {
   const onSwipeTileLoad = useCallback(
     (side) => setSwipeTilesReady(s => (s[side] ? s : { ...s, [side]: true })), []);
 
+  // Map canvas size → geographic viewport bounds (drives the swipe clip).
+  const { canvasRef, viewportBounds } = useCanvasViewport(viewState);
+
   const effectiveNdviCache = timelapse.timelapseCache || ndviCache;
   // time-lapse LST เล่นอยู่ → ค่าใน cache เป็น °C — provinceLayer ใช้สลับสเกลสี
   const timelapseMetric = timelapse.timelapseCache ? timelapse.metric : null;
@@ -110,13 +91,6 @@ function App() {
       .sort((a, b) => a.th.localeCompare(b.th, 'th')),
     []
   );
-
-  // Apply + persist the colour theme on the root element.
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    document.documentElement.style.colorScheme = theme;
-    try { localStorage.setItem('theme', theme); } catch { /* storage blocked — ignore */ }
-  }, [theme]);
 
   // Reflect the current selection in the tab title — clearer bookmarks and a
   // readable name for shared deep-links (?p=…).
@@ -215,29 +189,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raster.overlay, province.selectedProvinceEN, district.selectedDistrictEN]);
 
-  // Track the map canvas size → derive geographic viewport bounds for the swipe
-  // clip (Web-Mercator x is linear in longitude, so screen split ↔ clip lng).
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setCanvasSize({ w: width, h: height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const viewportBounds = useMemo(() => {
-    if (!canvasSize.w || !canvasSize.h) return null;
-    try {
-      const vp = new WebMercatorViewport({ ...viewState, width: canvasSize.w, height: canvasSize.h });
-      return vp.getBounds();  // [minLng, minLat, maxLng, maxLat]
-    } catch {
-      return null;
-    }
-  }, [viewState, canvasSize]);
-
   // Swipe compare: (re)fetch both years when active / scope / metric / years change.
   useEffect(() => {
     if (!swipe.active || !province.selectedProvinceEN) return;
@@ -275,38 +226,6 @@ function App() {
   const getCursor = useCallback(
     ({ isHovering }) => (draw.drawActive ? 'crosshair' : isHovering ? 'pointer' : 'default'),
     [draw.drawActive]);
-
-  // Drag the swipe divider — convert pointer x to a 0–1 split fraction.
-  const { setSplit: setSwipeSplit } = swipe;
-  const startSwipeDrag = useCallback((e) => {
-    e.preventDefault();
-    const el = canvasRef.current;
-    if (!el) return;
-    // keep receiving move events even if the pointer leaves the handle (touch)
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* unsupported */ }
-    // Coalesce pointermove → at most ONE split update per animation frame.
-    // pointermove fires ~120Hz; without this every event re-renders the whole
-    // app (incl. the sidebar charts), dropping frames. The clip itself is a
-    // cheap GPU re-clip (no tile re-fetch), so 60fps tracking is buttery.
-    let rafId = 0;
-    let pending = null;
-    const commit = () => { rafId = 0; if (pending != null) setSwipeSplit(pending); };
-    const move = (ev) => {
-      const rect = el.getBoundingClientRect();
-      pending = Math.max(0.05, Math.min(0.95, (ev.clientX - rect.left) / rect.width));
-      if (!rafId) rafId = requestAnimationFrame(commit);
-    };
-    const end = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      if (pending != null) setSwipeSplit(pending);  // commit final position
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);  // touch cancel → no leak
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-  }, [setSwipeSplit]);
 
   // Enter swipe mode: clear the single overlay + flatten pitch/bearing so the
   // screen divider maps cleanly to a clip longitude (top-down).
@@ -360,76 +279,14 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thailandData]);
 
-  const baseLayers = useMemo(() => buildMapLayers({
-    thailandData, ndviCache: effectiveNdviCache, timelapseMetric,
-    selectedProvinceEN:    province.selectedProvinceEN,
-    setSelectedProvince:   province.setSelectedProvince,
-    setSelectedProvinceEN: province.setSelectedProvinceEN,
-    setProvinceArea:       province.setProvinceArea,
-    fetchNDVI:             province.fetchNDVI,
-    districtsData:         district.districtsData,
-    districtCache:         district.districtCache,
-    selectedDistrictEN:    district.selectedDistrictEN,
-    setSelectedDistrict:   district.setSelectedDistrict,
-    setSelectedDistrictEN: district.setSelectedDistrictEN,
-    setDistrictArea:       district.setDistrictArea,
-    fetchDistrictNDVI:     district.fetchDistrictNDVI,
-    selectProvince,
-    ensureDistrictsLoaded: district.ensureDistrictsLoaded,
-    loadDistrictCache:     district.loadDistrictCache,
-    resetDistrict:         district.resetDistrict,
-    resetTrend:            trend.resetTrend,
-    showingDistricts,
-    setViewState, setTooltip, setSidebarTab,
-    zoom: viewState.zoom,
-    recommendData:    recommend.recommendData,
-    recommendVisible: recommend.recommendVisible,
-    rasterTileInfo:   raster.tileInfo,
-    swipeActive:      swipe.active,
-    // draw mode → ปิด picking ของ province/district เพื่อให้คลิกปักหมุดแทนการเลือก
-    drawActive:       draw.drawActive,
-    // Intentional partial deps — only re-layer on data/selection/zoom changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [
+  // All Deck.GL layers (province choropleth + swipe rasters + draw overlay),
+  // memoised in independent groups — see useMapLayers.
+  const layers = useMapLayers({
     thailandData, effectiveNdviCache, timelapseMetric,
-    province.selectedProvinceEN,
-    district.districtsData, district.districtCache, district.selectedDistrictEN,
-    showingDistricts,
-    viewState.zoom,
-    recommend.recommendData, recommend.recommendVisible,
-    raster.tileInfo, swipe.active, draw.drawActive,
-  ]);
-
-  // Swipe layers built separately so panning (which changes viewportBounds) only
-  // rebuilds the two clipped rasters, not the whole province choropleth.
-  const swipeLayersMemo = useMemo(
-    () => (swipe.active
-      ? swipeLayers({
-          swipe: { tileA: swipe.tileA, tileB: swipe.tileB, diffTile: swipe.diffTile,
-                   bounds: viewportBounds, split: swipe.split },
-          onTileLoad: onSwipeTileLoad,
-        })
-      : EMPTY_LAYERS),
-    [swipe.active, swipe.tileA, swipe.tileB, swipe.diffTile, viewportBounds, swipe.split, onSwipeTileLoad]
-  );
-
-  // Draw overlay built separately so adding a vertex only rebuilds the polygon,
-  // not the whole choropleth.
-  const drawLayersMemo = useMemo(
-    () => drawLayers({ points: draw.points }), [draw.points]);
-
-  // AI Recommend on the drawn area — reuse the province recommend layers
-  // (heatmap tiles + top-spot markers) driven by the draw hook's result.
-  const drawRecommendLayersMemo = useMemo(
-    () => (draw.recommendResult
-      ? recommendLayers({ recommendData: draw.recommendResult,
-                          recommendVisible: draw.recommendVisible, setTooltip })
-      : EMPTY_LAYERS),
-    [draw.recommendResult, draw.recommendVisible]);
-
-  const layers = useMemo(
-    () => [...baseLayers, ...swipeLayersMemo, ...drawRecommendLayersMemo, ...drawLayersMemo],
-    [baseLayers, swipeLayersMemo, drawRecommendLayersMemo, drawLayersMemo]);
+    province, district, trend, recommend, raster, swipe, draw,
+    showingDistricts, viewState, setViewState, setTooltip, setSidebarTab,
+    selectProvince, viewportBounds, onSwipeTileLoad,
+  });
 
   const sidebarData = {
     provinceList,
@@ -516,7 +373,7 @@ function App() {
         <Landing
           onEnter={enterDashboard}
           theme={theme}
-          onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+          onToggleTheme={toggleTheme}
         />
         <Toast />
       </>
@@ -530,7 +387,7 @@ function App() {
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed(c => !c)}
         theme={theme}
-        onToggleTheme={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+        onToggleTheme={toggleTheme}
         onShowAbout={() => setShowAbout(true)}
         onGoHome={goToLanding}
       />
@@ -560,70 +417,15 @@ function App() {
           choropleth={timelapseMetric === 'lst' ? 'lst' : 'ndvi'}
         />
 
-        {province.selectedProvinceEN && (
-          <div className="overlay-toggle" role="group" aria-label="ภาพถ่ายดาวเทียม (raster)">
-            <span className="overlay-toggle__label">ภาพดาวเทียม</span>
-            <div className="overlay-toggle__btns">
-              <button className="overlay-btn" data-active={!swipe.active && raster.overlay === 'none'}
-                onClick={() => { swipe.reset(); raster.clearOverlay(); }}>ปิด</button>
-              <button className="overlay-btn" data-active={!swipe.active && raster.overlay === 'ndvi'}
-                onClick={() => enableOverlay('ndvi')}>NDVI</button>
-              <button className="overlay-btn" data-active={!swipe.active && raster.overlay === 'lst'}
-                onClick={() => enableOverlay('lst')}>LST</button>
-            </div>
-
-            <button className="overlay-btn overlay-btn--full" data-active={swipe.active}
-              onClick={() => (swipe.active ? swipe.reset() : enableSwipe())}>
-              ⇆ เทียบ 2 ปี
-            </button>
-
-            {swipe.active && (
-              <div className="swipe-control">
-                <div className="overlay-toggle__btns">
-                  <button className="overlay-btn" data-active={swipe.metric === 'ndvi'}
-                    onClick={() => swipe.setMetric('ndvi')}>NDVI</button>
-                  <button className="overlay-btn" data-active={swipe.metric === 'lst'}
-                    onClick={() => swipe.setMetric('lst')}>LST</button>
-                </div>
-                <div className="overlay-toggle__btns">
-                  <button className="overlay-btn" data-active={swipe.mode === 'split'}
-                    onClick={() => swipe.setMode('split')}>ซ้าย-ขวา</button>
-                  <button className="overlay-btn" data-active={swipe.mode === 'diff'}
-                    onClick={() => swipe.setMode('diff')}>Δ ผลต่าง</button>
-                </div>
-                <div className="swipe-years">
-                  <label>ซ้าย
-                    <select value={swipe.yearA} onChange={(e) => swipe.setYearA(Number(e.target.value))}>
-                      {AVAILABLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                  </label>
-                  <label>ขวา
-                    <select value={swipe.yearB} onChange={(e) => swipe.setYearB(Number(e.target.value))}>
-                      {AVAILABLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {(raster.loading || swipe.loading
-              || (swipe.active && swipe.mode === 'diff' && swipe.diffTile && !swipeTilesReady.a)
-              || (swipe.active && swipe.mode === 'split' && swipe.tileA && swipe.tileB
-                  && !(swipeTilesReady.a && swipeTilesReady.b)))
-              && <span className="overlay-toggle__status">กำลังโหลดภาพ…</span>}
-          </div>
-        )}
-
-        {swipe.active && swipe.mode === 'split' && swipe.tileA && swipe.tileB && (
-          <>
-            <div className="swipe-divider" style={{ left: `${swipe.split * 100}%` }}>
-              <button className="swipe-divider__handle" onPointerDown={startSwipeDrag}
-                aria-label="ลากเพื่อเลื่อนเส้นเทียบ">⇆</button>
-            </div>
-            <span className="swipe-yearbadge swipe-yearbadge--a">{swipe.metric.toUpperCase()} · {swipe.yearA}</span>
-            <span className="swipe-yearbadge swipe-yearbadge--b">{swipe.metric.toUpperCase()} · {swipe.yearB}</span>
-          </>
-        )}
+        <MapOverlayControls
+          selectedProvinceEN={province.selectedProvinceEN}
+          swipe={swipe}
+          raster={raster}
+          enableOverlay={enableOverlay}
+          enableSwipe={enableSwipe}
+          swipeTilesReady={swipeTilesReady}
+          canvasRef={canvasRef}
+        />
 
         <div className="map-controls">
           <button
