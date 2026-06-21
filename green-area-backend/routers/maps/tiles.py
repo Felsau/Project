@@ -5,7 +5,6 @@
 URL ผูก GEE session → cache ใน in-process TTL (เหมือน recommend) แล้ว refresh เมื่อหมดอายุ.
 """
 import logging
-import time
 
 import ee
 from fastapi import APIRouter, HTTPException
@@ -13,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from dependencies import (get_province_geom, get_district_geom,
                           CURRENT_YEAR, YearParam, internal_error)
 from gee_utils import clean_s2_collection, get_lst_col
+from ttl_cache import TTLCache
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,26 +34,10 @@ NDVI_DIFF_VIS = {'min': -0.3, 'max': 0.3, 'palette': NDVI_DIFF_PALETTE}
 LST_DIFF_VIS = {'min': -5, 'max': 5, 'palette': LST_DIFF_PALETTE}
 
 # tile URL ผูก session GEE (~ชั่วโมง) → cache 30 นาทีปลอดภัย ลด getMapId ซ้ำตอน toggle
+# thread-safe ร่วม impl เดียวกับ recommend tile cache (ดู ttl_cache.py)
 _TILE_TTL = 1800
 _TILE_CACHE_MAX = 200
-_TILE_CACHE: dict[tuple, tuple[str, float]] = {}
-
-
-def _cache_get(key: tuple) -> str | None:
-    entry = _TILE_CACHE.get(key)
-    if entry and entry[1] > time.time():
-        return entry[0]
-    return None
-
-
-def _cache_put(key: tuple, url: str) -> None:
-    if len(_TILE_CACHE) >= _TILE_CACHE_MAX:
-        now = time.time()
-        for k in [k for k, (_, exp) in _TILE_CACHE.items() if exp <= now]:
-            del _TILE_CACHE[k]
-        while len(_TILE_CACHE) >= _TILE_CACHE_MAX:
-            _TILE_CACHE.pop(next(iter(_TILE_CACHE)))
-    _TILE_CACHE[key] = (url, time.time() + _TILE_TTL)
+_tile_cache = TTLCache(_TILE_TTL, _TILE_CACHE_MAX)
 
 
 def _resolve_geom(province_name: str, district_name: str | None) -> dict:
@@ -84,7 +68,7 @@ def _serve_tiles(kind: str, province_name: str, district_name: str | None,
                  year: int, image_fn, vis: dict, palette: list, missing: str):
     raw_geom = _resolve_geom(province_name, district_name)
     key = (kind, province_name, district_name, year)
-    url = _cache_get(key)
+    url = _tile_cache.get(key)
     if url is None:
         logger.info("⏳ %s tiles: %s/%s/%d", kind.upper(), province_name,
                     district_name or '-', year)
@@ -93,7 +77,7 @@ def _serve_tiles(kind: str, province_name: str, district_name: str | None,
             if img is None:
                 raise HTTPException(status_code=404, detail=missing)
             url = img.getMapId(vis)['tile_fetcher'].url_format
-            _cache_put(key, url)
+            _tile_cache.set(key, url)
         except HTTPException:
             raise
         except ee.EEException as ee_err:
@@ -136,7 +120,7 @@ def _serve_diff(kind: str, province_name: str, district_name: str | None,
     Makes year-over-year change visible where the raw rasters look near-identical."""
     raw_geom = _resolve_geom(province_name, district_name)
     key = (f"{kind}-diff", province_name, district_name, year_a, year_b)
-    url = _cache_get(key)
+    url = _tile_cache.get(key)
     if url is None:
         logger.info("⏳ %s diff tiles: %s/%s/%d→%d", kind.upper(), province_name,
                     district_name or '-', year_a, year_b)
@@ -148,7 +132,7 @@ def _serve_diff(kind: str, province_name: str, district_name: str | None,
                 raise HTTPException(status_code=404, detail=missing)
             diff = img_b.subtract(img_a)
             url = diff.getMapId(vis)['tile_fetcher'].url_format
-            _cache_put(key, url)
+            _tile_cache.set(key, url)
         except HTTPException:
             raise
         except ee.EEException as ee_err:
