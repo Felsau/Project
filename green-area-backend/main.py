@@ -103,12 +103,14 @@ def health():
 
 @app.get("/")
 def read_root():
-    annual  = supa_call(lambda s: s.table("ndvi_annual").select("province,year").execute())
-    monthly = supa_call(lambda s: s.table("ndvi_monthly").select("province,year").execute())
+    # count-only query (Prefer: count=exact) — เดิม select ทั้งตารางมา len() ทุกครั้ง
+    # ดึงแค่ count ผ่าน header ไม่โอนทุกแถว (ndvi_monthly = 77 จว. × หลายปี × 12 เดือน)
+    annual  = supa_call(lambda s: s.table("ndvi_annual").select("year", count="exact").limit(1).execute())
+    monthly = supa_call(lambda s: s.table("ndvi_monthly").select("year", count="exact").limit(1).execute())
     return {
         "message":        "Green Area API is running! 🌿",
-        "cached_annual":  len(annual.data),
-        "cached_monthly": len(monthly.data),
+        "cached_annual":  annual.count,
+        "cached_monthly": monthly.count,
     }
 
 
@@ -252,8 +254,10 @@ def get_ranking(year: YearParam = CURRENT_YEAR):
         row["deficit_m2_per_person"] = round(max(0, WHO_STANDARD_M2 - current), 2)
         pop = row.get("population") or 0
         row["deficit_km2"] = round(max(0, WHO_STANDARD_M2 - current) * pop / 1_000_000, 2) if pop else 0
-    who_pass = sum(1 for r in rankable if r.get("who_status") and "ผ่าน" in r.get("who_status", ""))
-    who_fail = sum(1 for r in rankable if r.get("who_status") and "ต่ำกว่า" in r.get("who_status", ""))
+    # นับจากตัวเลขตรงๆ (rankable = m²/คน ไม่เป็น null แล้ว) แทนการ match ข้อความ
+    # who_status — กัน count เพี้ยนเงียบถ้าวันหลังแก้ถ้อยคำใน compute_who_status
+    who_pass = sum(1 for r in rankable if r["green_area_m2_per_person"] >= WHO_STANDARD_M2)
+    who_fail = len(rankable) - who_pass
     return {
         "year": year,
         "total_cached": len(rankable),

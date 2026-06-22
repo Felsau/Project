@@ -10,9 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-def _fake_response(data):
-    """จำลอง APIResponse ที่ supabase-py คืน — มีแค่ .data attribute"""
-    return SimpleNamespace(data=data)
+def _fake_response(data, count=None):
+    """จำลอง APIResponse ที่ supabase-py คืน — .data + .count (count="exact" query)
+    count default = len(data) เพื่อให้ count-only endpoint (เช่น GET /) ใช้ได้"""
+    return SimpleNamespace(data=data, count=len(data) if count is None else count)
 
 
 @pytest.fixture

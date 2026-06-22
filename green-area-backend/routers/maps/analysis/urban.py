@@ -60,7 +60,10 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
             row = cached.data[0]
             if row.get("cache_version", 1) >= CURRENT_CACHE_VERSION:
                 logger.info("✅ Urban cache hit: %s/%d", scope, year)
-                return {**row, "from_cache": True}
+                # ตัด DB internals ให้ response shape ตรงกับ path คำนวณสด (cache miss)
+                public = {k: v for k, v in row.items()
+                          if k not in ("id", "cache_version", "created_at")}
+                return {**public, "from_cache": True}
             # row เก่ากว่า compute version ปัจจุบัน → ลบทิ้งแล้วคำนวณใหม่
             # (ลบก่อน ไม่งั้น insert รอบใหม่ชน UNIQUE(province,district,year))
             logger.info("♻️ Urban stale cache: %s/%d — recomputing", scope, year)
