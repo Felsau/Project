@@ -1,7 +1,7 @@
 """Time-series (Phase B-2) — multi-year NDVI+LST trend จาก cached annual rows."""
 from fastapi import APIRouter, HTTPException
 
-from dependencies import (supa_call, ensure_province, ensure_district,
+from dependencies import (supa_call, gather, ensure_province, ensure_district,
                           CURRENT_YEAR, YearParam)
 from stats_utils import forecast_linear, mann_kendall
 
@@ -41,9 +41,12 @@ def get_timeseries(province_name: str,
             return q.execute()
         return supa_call(go).data
 
-    ndvi_rows = _q(ndvi_table,
-                   "year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person")
-    lst_rows = _q(lst_table, "year,lst_mean,lst_min,lst_max")
+    # NDVI + LST เป็น query คนละตารางที่ไม่พึ่งกัน → ยิงขนาน ลด latency
+    ndvi_rows, lst_rows = gather(
+        lambda: _q(ndvi_table,
+                   "year,ndvi_mean,ndvi_min,ndvi_max,green_area_pct,green_area_km2,green_area_m2_per_person"),
+        lambda: _q(lst_table, "year,lst_mean,lst_min,lst_max"),
+    )
 
     n_by_y = {r["year"]: r for r in ndvi_rows}
     l_by_y = {r["year"]: r for r in lst_rows}

@@ -1,7 +1,7 @@
 """District summary (Phase B-1) — per-district NDVI+LST breakdown จาก cache."""
 from fastapi import APIRouter
 
-from dependencies import (supa_call, ensure_province, DISTRICT_GEOMETRIES,
+from dependencies import (supa_call, gather, ensure_province, DISTRICT_GEOMETRIES,
                           CURRENT_YEAR, YearParam)
 
 router = APIRouter()
@@ -15,12 +15,15 @@ def get_district_summary(province_name: str, year: YearParam = CURRENT_YEAR):
     """
     ensure_province(province_name)
 
-    ndvi_rows = supa_call(lambda s: s.table("district_ndvi_annual")
-        .select("district,ndvi_mean,green_area_pct,green_area_km2,total_area_km2")
-        .eq("province", province_name).eq("year", year).execute()).data
-    lst_rows = supa_call(lambda s: s.table("district_lst_annual")
-        .select("district,lst_mean,lst_min,lst_max")
-        .eq("province", province_name).eq("year", year).execute()).data
+    # NDVI + LST รายอำเภอเป็น query คนละตารางที่ไม่พึ่งกัน → ยิงขนาน ลด latency
+    ndvi_rows, lst_rows = gather(
+        lambda: supa_call(lambda s: s.table("district_ndvi_annual")
+            .select("district,ndvi_mean,green_area_pct,green_area_km2,total_area_km2")
+            .eq("province", province_name).eq("year", year).execute()).data,
+        lambda: supa_call(lambda s: s.table("district_lst_annual")
+            .select("district,lst_mean,lst_min,lst_max")
+            .eq("province", province_name).eq("year", year).execute()).data,
+    )
 
     lst_by_dist = {r["district"]: r for r in lst_rows}
     merged = []

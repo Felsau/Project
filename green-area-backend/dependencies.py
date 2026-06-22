@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Annotated
 from fastapi import Header, HTTPException, Query
@@ -139,6 +140,18 @@ def supa_call(builder_fn, retries: int = 1):
             raise
     # ไม่ควรมาถึง — แต่กัน type checker
     raise last_exc  # type: ignore[misc]
+
+
+def gather(*funcs):
+    """รัน callable หลายตัวขนานกันใน thread แล้วคืนผลตามลำดับเดิม.
+
+    ใช้กับ endpoint ที่ query DB หลายตารางแบบไม่พึ่งผลกัน (เช่น NDVI + LST รายอำเภอ) —
+    httpx.Client ที่ supabase-py ใช้ thread-safe จึง share client ข้าม thread ได้ ·
+    exception จาก func ใดๆ จะ propagate ออกมา (error handling เดิมไม่เปลี่ยน)
+    """
+    with ThreadPoolExecutor(max_workers=len(funcs)) as ex:
+        futures = [ex.submit(fn) for fn in funcs]
+        return [f.result() for f in futures]
 
 
 def get_population(province_name: str, year: int) -> tuple[int | None, int | None]:
