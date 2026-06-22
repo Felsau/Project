@@ -28,6 +28,7 @@ from .scoring import (W_NDVI, W_LST, W_POP, W_ACCESS,
                       compute_plantable_area_m2, get_heatmap_url)
 from .species import get_recommended_species
 from .tile_cache import get_cached_tile_url, store_tile_url
+from keyed_lock import COMPUTE_LOCK
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -104,6 +105,24 @@ def _compute_recommendation_payload(geom: ee.Geometry, year: int,
 def _run_recommendation(province_name: str, district_name: str | None,
                         raw_geom: dict, year: int,
                         w_ndvi: float, w_lst: float, w_pop: float, w_access: float):
+    """Province/district recommendation — ล็อกต่อ key เฉพาะ default weights กัน
+    cache stampede (request เดียวกันยิง GEE compute หนักซ้ำพร้อมกัน) แล้ว delegate
+    ไป _run_recommendation_inner · custom weights ไม่ cache จึงไม่ต้องล็อก ·
+    cache lookup ใน inner ทำหน้าที่ re-check หลังได้ lock ในตัว (เจอ row ที่ request
+    ก่อนหน้า compute ไว้แล้ว → ไม่ต้องคำนวณซ้ำ)
+    """
+    nw = normalize_weights(w_ndvi, w_lst, w_pop, w_access)
+    if nw == (W_NDVI, W_LST, W_POP, W_ACCESS):
+        with COMPUTE_LOCK.hold(("recommend", province_name, district_name, year)):
+            return _run_recommendation_inner(province_name, district_name,
+                                             raw_geom, year, *nw)
+    return _run_recommendation_inner(province_name, district_name,
+                                     raw_geom, year, *nw)
+
+
+def _run_recommendation_inner(province_name: str, district_name: str | None,
+                              raw_geom: dict, year: int,
+                              w_ndvi: float, w_lst: float, w_pop: float, w_access: float):
     """Shared province/district recommendation flow.
 
     district_name=None → province-level (cache row มี district IS NULL).
