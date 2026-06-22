@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,6 +78,23 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[_rate_limit])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Observability — log request ที่ช้าผิดปกติ (ส่วนใหญ่คือ GEE compute ที่ block .getInfo())
+# เพื่อเห็นคอขวด/endpoint ที่ควร cache · ใส่ X-Process-Time-Ms ทุก response ไว้ debug
+# ผ่าน curl/devtools · threshold ปรับผ่าน env SLOW_REQUEST_MS (default 5000ms)
+SLOW_REQUEST_MS = int(os.getenv("SLOW_REQUEST_MS", "5000"))
+
+
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.0f}"
+    if elapsed_ms >= SLOW_REQUEST_MS:
+        logger.warning("🐢 ช้า %.0fms · %s %s", elapsed_ms,
+                       request.method, request.url.path)
+    return response
 
 if not GEE_PROJECT:
     logger.warning("⚠️  ไม่พบ GEE_PROJECT ใน .env — endpoint ที่ต้องใช้ GEE จะใช้งานไม่ได้")
