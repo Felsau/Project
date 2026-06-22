@@ -23,19 +23,18 @@ export const buildRecommendReport = async (data) => {
   });
 
   let h = sectionTitle('วิธีการวิเคราะห์');
+  const popYearNote = recommendData.worldpop_year ? ` ปี ${recommendData.worldpop_year}` : '';
   h += paragraph(
-    'ระบบวิเคราะห์จุดที่เหมาะสมในการปลูกต้นไม้โดยถ่วงน้ำหนัก 3 ปัจจัย: ดัชนีพืชพรรณ <b>NDVI</b> (พื้นที่ที่ขาดต้นไม้), อุณหภูมิผิวพื้น <b>LST</b> (พื้นที่ร้อน), และความหนาแน่นประชากร (WorldPop 100m)'
+    `ระบบวิเคราะห์จุดที่เหมาะสมในการปลูกต้นไม้โดยถ่วงน้ำหนัก 4 ปัจจัย: ดัชนีพืชพรรณ <b>NDVI</b> (พื้นที่ที่ขาดต้นไม้), อุณหภูมิผิวพื้น <b>LST</b> (พื้นที่ร้อน), ความหนาแน่นประชากร (WorldPop 100m${popYearNote}) และระยะถึงพื้นที่สีเขียวเดิม (การเข้าถึง — ESA WorldCover)`
   );
   const w = recommendData.weights || {};
-  h += table(
-    ['ปัจจัย', 'น้ำหนัก'],
-    [
-      ['NDVI ต่ำ (ขาดต้นไม้)', `${(w.ndvi * 100).toFixed(0)}%`],
-      ['LST สูง (ความร้อน)', `${(w.lst * 100).toFixed(0)}%`],
-      ['ประชากรหนาแน่น', `${(w.population * 100).toFixed(0)}%`],
-    ],
-    { firstColWidth: 240 }
-  );
+  const weightRows = [
+    ['NDVI ต่ำ (ขาดต้นไม้)', `${(w.ndvi * 100).toFixed(0)}%`],
+    ['LST สูง (ความร้อน)', `${(w.lst * 100).toFixed(0)}%`],
+    ['ประชากรหนาแน่น', `${(w.population * 100).toFixed(0)}%`],
+  ];
+  if (w.access != null) weightRows.push(['เข้าถึงพื้นที่สีเขียวยาก', `${(w.access * 100).toFixed(0)}%`]);
+  h += table(['ปัจจัย', 'น้ำหนัก'], weightRows, { firstColWidth: 240 });
   sections.push({ label: 'Method', html: h });
 
   if (recommendData.top_locations?.length > 0) {

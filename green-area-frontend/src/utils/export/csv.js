@@ -143,6 +143,10 @@ export const exportRecommendCsv = (data) => {
   rows.push(['น้ำหนัก NDVI', recommendData.weights?.ndvi]);
   rows.push(['น้ำหนัก LST', recommendData.weights?.lst]);
   rows.push(['น้ำหนัก ประชากร', recommendData.weights?.population]);
+  if (recommendData.weights?.access != null)
+    rows.push(['น้ำหนัก เข้าถึงสีเขียว', recommendData.weights.access]);
+  if (recommendData.worldpop_year)
+    rows.push(['ปีข้อมูลประชากร (WorldPop)', recommendData.worldpop_year]);
   rows.push([]);
 
   rows.push(['Top Locations']);

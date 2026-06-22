@@ -3,8 +3,8 @@ import { API_BASE, CURRENT_YEAR } from '../constants';
 import { pushError } from '../utils/toast';
 import { fetchWithRetry } from '../utils/fetchRetry';
 
-// Default น้ำหนัก — ตรงกับ backend (W_NDVI / W_LST / W_POP)
-export const DEFAULT_WEIGHTS = { ndvi: 0.40, lst: 0.30, pop: 0.30 };
+// Default น้ำหนัก — ตรงกับ backend (W_NDVI / W_LST / W_POP / W_ACCESS, รวม = 1.0)
+export const DEFAULT_WEIGHTS = { ndvi: 0.35, lst: 0.25, pop: 0.25, access: 0.15 };
 
 export function useRecommendData() {
   const [recommendData, setRecommendData]       = useState(null);
@@ -37,6 +37,8 @@ export function useRecommendData() {
         params.set('w_ndvi', weights.ndvi);
         params.set('w_lst',  weights.lst);
         params.set('w_pop',  weights.pop);
+        // access อาจไม่มีใน weights ที่ persist ไว้ก่อน factor นี้ → ปล่อยให้ backend ใช้ default
+        if (weights.access != null) params.set('w_access', weights.access);
       }
       const qs  = params.toString();
       const url = `${API_BASE}${path}${qs ? `?${qs}` : ''}`;

@@ -7,7 +7,7 @@ import pytest
 
 # Import จาก backend modules — conftest.py ตั้ง sys.path ให้แล้ว
 from routers.ndvi import _is_stale, compute_who_status
-from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP
+from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP, W_ACCESS
 from routers.recommend import species as species_mod
 from routers.recommend.species import get_recommended_species
 from polygon_utils import (
@@ -110,33 +110,39 @@ class TestComputeWhoStatus:
         assert status is None
 
 
-# ── _normalize_weights ────────────────────────────────────────────────────────
+# ── _normalize_weights (4 ปัจจัย: NDVI/LST/pop/access) ────────────────────────
 class TestNormalizeWeights:
     def test_default_weights_pass_through(self):
-        n, l, p = _normalize_weights(W_NDVI, W_LST, W_POP)
-        assert (n, l, p) == (W_NDVI, W_LST, W_POP)
+        n, l, p, a = _normalize_weights(W_NDVI, W_LST, W_POP, W_ACCESS)
+        assert (n, l, p, a) == (W_NDVI, W_LST, W_POP, W_ACCESS)
 
     def test_normalize_to_sum_one(self):
-        n, l, p = _normalize_weights(0.6, 0.4, 0.0)
-        assert abs(n + l + p - 1.0) < 1e-9
+        n, l, p, a = _normalize_weights(0.6, 0.4, 0.0, 0.0)
+        assert abs(n + l + p + a - 1.0) < 1e-9
         assert n == pytest.approx(0.6)
         assert l == pytest.approx(0.4)
         assert p == pytest.approx(0.0)
+        assert a == pytest.approx(0.0)
 
     def test_normalize_oversize_weights(self):
-        # 2.0 + 2.0 + 1.0 = 5.0 → normalize เป็น 0.4, 0.4, 0.2
-        n, l, p = _normalize_weights(2.0, 2.0, 1.0)
-        assert n == pytest.approx(0.4)
-        assert l == pytest.approx(0.4)
-        assert p == pytest.approx(0.2)
+        # 2.0 + 2.0 + 1.0 + 0.0 = 5.0 → normalize เป็น 0.4, 0.4, 0.2, 0.0
+        n, l, p, a = _normalize_weights(2.0, 2.0, 1.0, 0.0)
+        assert (n, l, p, a) == pytest.approx((0.4, 0.4, 0.2, 0.0))
 
     def test_zero_total_falls_back_to_default(self):
-        n, l, p = _normalize_weights(0, 0, 0)
-        assert (n, l, p) == (W_NDVI, W_LST, W_POP)
+        assert _normalize_weights(0, 0, 0, 0) == (W_NDVI, W_LST, W_POP, W_ACCESS)
 
     def test_negative_total_falls_back_to_default(self):
-        n, l, p = _normalize_weights(-0.1, -0.1, -0.1)
-        assert (n, l, p) == (W_NDVI, W_LST, W_POP)
+        assert _normalize_weights(-0.1, -0.1, -0.1, -0.1) == (W_NDVI, W_LST, W_POP, W_ACCESS)
+
+    def test_access_defaults_when_omitted(self):
+        # caller ที่ส่ง 3 ตัว → w_access ใช้ default · ยังคืน 4 ค่า รวม = 1
+        out = _normalize_weights(1, 1, 1)
+        assert len(out) == 4
+        assert sum(out) == pytest.approx(1.0)
+
+    def test_default_constants_sum_to_one(self):
+        assert W_NDVI + W_LST + W_POP + W_ACCESS == pytest.approx(1.0)
 
 
 # ── _validate_geojson_path ────────────────────────────────────────────────────
@@ -441,6 +447,33 @@ class TestSiteAwareSpecies:
         out = get_recommended_species("Bangkok Metropolis", lst_mean=38.0, ndvi_mean=0.45)
         assert out["region"] is not None
         assert any(s.get("site_fit") for s in out["species"])
+
+
+# ── _site_fit (per-species scoring เทียบสภาพพื้นที่) ──────────────────────────
+class TestSiteFit:
+    _SHADE = {"traits": ["ร่มเงากว้าง", "ลดความร้อน"], "purpose": "ร่มเงา", "reason": "ให้ร่มเงา"}
+    _NEUTRAL = {"traits": ["สวยงาม"], "purpose": "ประดับ", "reason": "ปลูกง่าย"}
+
+    def test_hot_matches_shade_keyword(self):
+        score, reason = species_mod._site_fit(self._SHADE, hot=True, degraded=False, green=False)
+        assert score == 2
+        assert reason == "ให้ร่มเงาในพื้นที่ร้อน"
+
+    def test_no_signal_scores_zero_and_none(self):
+        score, reason = species_mod._site_fit(self._SHADE, hot=False, degraded=False, green=False)
+        assert score == 0 and reason is None
+
+    def test_neutral_species_never_matches(self):
+        score, reason = species_mod._site_fit(self._NEUTRAL, hot=True, degraded=True, green=True)
+        assert score == 0 and reason is None
+
+    def test_multiple_conditions_accumulate(self):
+        combo = {"traits": ["ร่มเงากว้าง", "ทนแล้ง"], "purpose": "", "reason": ""}
+        score, reason = species_mod._site_fit(combo, hot=True, degraded=True, green=False)
+        assert score == 4
+        assert "ให้ร่มเงาในพื้นที่ร้อน" in reason
+        assert "ทนทาน เหมาะพื้นที่เสื่อมโทรม" in reason
+        assert " · " in reason   # หลายเหตุผลเชื่อมด้วย separator
 
 
 # ── get_population — fallback ต้องบอก "ปีจริง" ของประชากรที่ใช้ ─────────────────

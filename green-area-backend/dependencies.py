@@ -36,7 +36,11 @@ CURRENT_CACHE_VERSION = 2
 # compute logic ของ /recommend เปลี่ยนคนละจังหวะ · bump เมื่อแก้ priority/plantable/
 # impact logic ที่ทำให้ค่า cache เก่าไม่ valid · v1 = plantability mask (ESA WorldCover)
 # + Cloud Score+ NDVI + relative-LST anomaly · row เก่าถูก migration 008 ตั้งเป็น 0 → stale
-RECOMMEND_CACHE_VERSION = 1
+# v1 → v2: unmask(0) ให้ ndvi_deficit → priority นิยามครบทุก pixel แม้ S2 median masked
+#          (heatmap ไม่เป็นรู) ทำให้ top_locations/impact ที่ cache ด้วย v1 ต่างไป → stale
+# v2 → v3: เพิ่มปัจจัยที่ 4 access_need (ระยะถึงพื้นที่สีเขียวเดิม) + rebalance default
+#          weights → priority/top_locations เปลี่ยน → row ที่ cache ด้วย v2 stale
+RECOMMEND_CACHE_VERSION = 3
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 

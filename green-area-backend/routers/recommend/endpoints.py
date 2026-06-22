@@ -1,9 +1,10 @@
 """Recommendation endpoints — province + district level.
 
-Priority Score = w1·NDVI_deficit + w2·LST_heat + w3·population_need
+Priority Score = w1·NDVI_deficit + w2·LST_heat + w3·population_need + w4·access_need
 - NDVI_deficit : พื้นที่ NDVI ต่ำ = ขาดต้นไม้ → ค่าสูงคือควรปลูก
 - LST_heat     : อุณหภูมิผิวพื้นสูง = ร้อนเกินต้องการพืช → ค่าสูงคือควรปลูก
 - pop_need     : ประชากรหนาแน่น (WorldPop) = คนเยอะต้องการพื้นที่สีเขียว
+- access_need  : ไกลจากพื้นที่สีเขียวเดิม = เข้าถึงยาก (equity) → ค่าสูงคือควรปลูก
 
 Province + district ใช้ flow เดียวกันทุกขั้น ต่างแค่ geometry/cache-key →
 รวมไว้ใน _run_recommendation() (district_name=None = province-level)
@@ -16,11 +17,12 @@ from pydantic import BaseModel, Field
 
 from dependencies import (supa_call, internal_error, RECOMMEND_CACHE_VERSION,
                           PROVINCE_GEOMETRIES, get_province_geom, get_district_geom,
-                          CURRENT_YEAR, YEAR_MIN, YEAR_MAX, YearParam, WeightParam)
+                          CURRENT_YEAR, YEAR_MIN, YEAR_MAX, YearParam, WeightParam,
+                          WORLDPOP_YEAR)
 from impact import estimate_impact
 from polygon_utils import validate_drawn_polygon
 
-from .scoring import (W_NDVI, W_LST, W_POP,
+from .scoring import (W_NDVI, W_LST, W_POP, W_ACCESS,
                       normalize_weights, assert_imagery_available,
                       compute_priority, get_top_locations,
                       compute_plantable_area_m2, get_heatmap_url)
@@ -31,37 +33,60 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _province_site_metrics(province_name: str, year: int):
-    """NDVI/LST เฉลี่ยระดับจังหวัดจาก cache (ปีที่ขอ) — ใช้จัดอันดับพันธุ์ไม้ตามสภาพ
-    พื้นที่ · คืน (lst_mean, ndvi_mean) · None ถ้าไม่มีใน cache → species fallback ลำดับภาค"""
+def _metric_tables(district_name: str | None) -> tuple[str, str]:
+    """คืน (lst_table, ndvi_table) ตามระดับที่ขอ — province vs district.
+    แยกเป็น helper เล็กๆ เพื่อ unit-test การ route ตารางได้โดยไม่แตะ DB"""
+    if district_name is None:
+        return "province_lst_annual", "ndvi_annual"
+    return "district_lst_annual", "district_ndvi_annual"
+
+
+def _site_metrics(province_name: str, district_name: str | None, year: int):
+    """NDVI/LST เฉลี่ยจาก cache (ปีที่ขอ) — ใช้จัดอันดับพันธุ์ไม้ตามสภาพพื้นที่.
+
+    district_name=None → ระดับจังหวัด (ndvi_annual / province_lst_annual);
+    มีค่า → ระดับอำเภอ (district_ndvi_annual / district_lst_annual) เพื่อให้พันธุ์ไม้
+    สะท้อนสภาพอำเภอจริง ไม่ใช่ค่าเฉลี่ยทั้งจังหวัด · คืน (lst_mean, ndvi_mean) ·
+    None รายตัวถ้าไม่มีใน cache → species fallback ลำดับภาค"""
+    lst_table, ndvi_table = _metric_tables(district_name)
+
     def _one(table, col):
+        def _q(s):
+            q = (s.table(table).select(col)
+                 .eq("province", province_name).eq("year", year))
+            if district_name is not None:
+                q = q.eq("district", district_name)
+            return q.limit(1).execute()
         try:
-            rows = supa_call(lambda s: s.table(table).select(col)
-                             .eq("province", province_name).eq("year", year)
-                             .limit(1).execute()).data
+            rows = supa_call(_q).data
             return rows[0][col] if rows else None
         except Exception:
             return None
-    return _one("province_lst_annual", "lst_mean"), _one("ndvi_annual", "ndvi_mean")
+
+    return _one(lst_table, "lst_mean"), _one(ndvi_table, "ndvi_mean")
 
 
 def _run_recommendation(province_name: str, district_name: str | None,
                         raw_geom: dict, year: int,
-                        w_ndvi: float, w_lst: float, w_pop: float):
+                        w_ndvi: float, w_lst: float, w_pop: float, w_access: float):
     """Shared province/district recommendation flow.
 
     district_name=None → province-level (cache row มี district IS NULL).
     Caller รับผิดชอบ validate geometry + return 404 ก่อนเรียก helper นี้.
     """
-    w_ndvi, w_lst, w_pop = normalize_weights(w_ndvi, w_lst, w_pop)
-    is_default = (w_ndvi, w_lst, w_pop) == (W_NDVI, W_LST, W_POP)
-    lst_mean, ndvi_mean = _province_site_metrics(province_name, year)
+    w_ndvi, w_lst, w_pop, w_access = normalize_weights(w_ndvi, w_lst, w_pop, w_access)
+    is_default = (w_ndvi, w_lst, w_pop, w_access) == (W_NDVI, W_LST, W_POP, W_ACCESS)
+    lst_mean, ndvi_mean = _site_metrics(province_name, district_name, year)
     species_info = get_recommended_species(province_name, lst_mean, ndvi_mean)
     label = province_name if district_name is None else f"{province_name}/{district_name}"
 
     def _base_response(**extra):
         resp = {"province": province_name, "year": year,
-                "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
+                "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop,
+                            "access": w_access},
+                # ประชากรมาจาก WorldPop raster ปีคงที่ (ดู scoring.compute_priority) —
+                # surface ให้ client รู้ว่า pop_need คิดบนข้อมูลปีไหน (อาจ ≠ year ที่ขอ)
+                "worldpop_year": WORLDPOP_YEAR,
                 "recommended_species": species_info, **extra}
         if district_name is not None:
             resp["district"] = district_name
@@ -92,7 +117,8 @@ def _run_recommendation(province_name: str, district_name: str | None,
             if tile_url is None or impact is None:
                 try:
                     geom = ee.Geometry(raw_geom)
-                    priority, _, _, _, plantable = compute_priority(geom, year, w_ndvi, w_lst, w_pop)
+                    priority, _, _, _, _, plantable = compute_priority(
+                        geom, year, w_ndvi, w_lst, w_pop, w_access)
                     if tile_url is None:
                         tile_url = get_heatmap_url(priority)
                         store_tile_url(province_name, district_name, year, tile_url)
@@ -111,14 +137,16 @@ def _run_recommendation(province_name: str, district_name: str | None,
             return _base_response(tile_url=tile_url, top_locations=row["top_locations"],
                                   impact=impact, from_cache=True, cached_at=row["created_at"])
 
-    logger.info("⏳ Computing recommendation: %s/%d (w=%.2f/%.2f/%.2f%s)",
-                label, year, w_ndvi, w_lst, w_pop, "" if is_default else " custom")
+    logger.info("⏳ Computing recommendation: %s/%d (w=%.2f/%.2f/%.2f/%.2f%s)",
+                label, year, w_ndvi, w_lst, w_pop, w_access, "" if is_default else " custom")
     try:
         geom = ee.Geometry(raw_geom)
         assert_imagery_available(geom, year)
-        priority, ndvi_deficit, lst_heat, pop_need, plantable = compute_priority(geom, year, w_ndvi, w_lst, w_pop)
+        priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable = compute_priority(
+            geom, year, w_ndvi, w_lst, w_pop, w_access)
         tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, geom, plantable, n=10)
+        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, access_need,
+                                geom, plantable, n=10)
         plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
         impact = estimate_impact(plantable_m2, species_info.get("species", []))
 
@@ -160,9 +188,10 @@ def _run_recommendation(province_name: str, district_name: str | None,
 @router.get("/recommend/{province_name}")
 def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
                        w_ndvi: WeightParam = W_NDVI, w_lst: WeightParam = W_LST,
-                       w_pop: WeightParam = W_POP):
+                       w_pop: WeightParam = W_POP, w_access: WeightParam = W_ACCESS):
     raw_geom = get_province_geom(province_name)
-    return _run_recommendation(province_name, None, raw_geom, year, w_ndvi, w_lst, w_pop)
+    return _run_recommendation(province_name, None, raw_geom, year,
+                               w_ndvi, w_lst, w_pop, w_access)
 
 
 # ── District-level recommendation ────────────────────────────────────────────
@@ -170,9 +199,10 @@ def recommend_province(province_name: str, year: YearParam = CURRENT_YEAR,
 def recommend_district(province_name: str, district_name: str,
                        year: YearParam = CURRENT_YEAR,
                        w_ndvi: WeightParam = W_NDVI, w_lst: WeightParam = W_LST,
-                       w_pop: WeightParam = W_POP):
+                       w_pop: WeightParam = W_POP, w_access: WeightParam = W_ACCESS):
     raw_geom = get_district_geom(province_name, district_name)
-    return _run_recommendation(province_name, district_name, raw_geom, year, w_ndvi, w_lst, w_pop)
+    return _run_recommendation(province_name, district_name, raw_geom, year,
+                               w_ndvi, w_lst, w_pop, w_access)
 
 
 # ── Custom-area recommendation (user-drawn polygon) ──────────────────────────
@@ -186,6 +216,7 @@ class CustomAreaRecommendRequest(BaseModel):
     w_ndvi: float = Field(default=W_NDVI, ge=0, le=1)
     w_lst: float = Field(default=W_LST, ge=0, le=1)
     w_pop: float = Field(default=W_POP, ge=0, le=1)
+    w_access: float = Field(default=W_ACCESS, ge=0, le=1)
 
 
 @router.post("/recommend/custom-area")
@@ -198,28 +229,33 @@ def recommend_custom_area(req: CustomAreaRecommendRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    w_ndvi, w_lst, w_pop = normalize_weights(req.w_ndvi, req.w_lst, req.w_pop)
+    w_ndvi, w_lst, w_pop, w_access = normalize_weights(
+        req.w_ndvi, req.w_lst, req.w_pop, req.w_access)
     # province ใช้แค่เลือกพันธุ์ไม้ — ถ้าไม่อยู่ใน whitelist ก็ข้าม (คืน species ว่าง)
     province = req.province if req.province in PROVINCE_GEOMETRIES else None
-    lst_mean, ndvi_mean = _province_site_metrics(province, req.year) if province else (None, None)
+    lst_mean, ndvi_mean = _site_metrics(province, None, req.year) if province else (None, None)
     species_info = (get_recommended_species(province, lst_mean, ndvi_mean) if province
                     else {"region": None, "species": []})
 
-    logger.info("⏳ Custom-area recommend: %.1f km² · ปี %d (w=%.2f/%.2f/%.2f)",
-                area_km2, req.year, w_ndvi, w_lst, w_pop)
+    logger.info("⏳ Custom-area recommend: %.1f km² · ปี %d (w=%.2f/%.2f/%.2f/%.2f)",
+                area_km2, req.year, w_ndvi, w_lst, w_pop, w_access)
     try:
         geom = ee.Geometry(req.geometry)
         assert_imagery_available(geom, req.year)
-        priority, ndvi_deficit, lst_heat, pop_need, plantable = compute_priority(geom, req.year, w_ndvi, w_lst, w_pop)
+        priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable = compute_priority(
+            geom, req.year, w_ndvi, w_lst, w_pop, w_access)
         tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, geom, plantable, n=10)
+        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, access_need,
+                                geom, plantable, n=10)
         plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
         impact = estimate_impact(plantable_m2, species_info.get("species", []))
         return {
             "year": req.year,
             "area_km2": round(area_km2, 2),
             "province": province,
-            "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop},
+            "weights": {"ndvi": w_ndvi, "lst": w_lst, "population": w_pop,
+                        "access": w_access},
+            "worldpop_year": WORLDPOP_YEAR,
             "tile_url": tile_url,
             "top_locations": top,
             "recommended_species": species_info,

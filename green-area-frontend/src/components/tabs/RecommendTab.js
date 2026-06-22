@@ -1,4 +1,5 @@
 import { AVAILABLE_YEARS } from '../../constants';
+import { DEFAULT_WEIGHTS } from '../../hooks/useRecommendData';
 import { exportRecommendCsv } from '../../utils/exportUtils';
 import ExportBar from '../ui/ExportBar';
 import { Note } from '../ui/Metric';
@@ -6,9 +7,10 @@ import ImpactSection from './recommend/ImpactSection';
 import SpeciesSection from './recommend/SpeciesSection';
 
 const WEIGHT_SLIDERS = [
-  { key: 'ndvi', label: 'NDVI ต่ำ' },
-  { key: 'lst',  label: 'LST สูง' },
-  { key: 'pop',  label: 'ประชากร' },
+  { key: 'ndvi',   label: 'NDVI ต่ำ' },
+  { key: 'lst',    label: 'LST สูง' },
+  { key: 'pop',    label: 'ประชากร' },
+  { key: 'access', label: 'เข้าถึงสีเขียวยาก' },
 ];
 
 // อธิบายว่า top-spot แต่ละจุดคะแนนสูงเพราะอะไร (factors จาก backend, ค่า 0–1)
@@ -16,6 +18,7 @@ const FACTOR_LABELS = {
   ndvi_deficit: 'ขาดต้นไม้',
   lst_heat: 'ร้อนกว่าเฉลี่ย',
   pop_need: 'ชุมชนหนาแน่น',
+  access_need: 'ไกลพื้นที่สีเขียว',
 };
 
 const factorText = (factors) =>
@@ -39,8 +42,8 @@ export default function RecommendTab({ data, handlers }) {
     <div id="export-recommend" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <p className="helper" style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)' }}>
-        วิเคราะห์จุดที่ควรปลูกต้นไม้ในพื้นที่เป้าหมาย โดยถ่วงน้ำหนัก NDVI, อุณหภูมิผิวพื้น
-        และความหนาแน่นของประชากร (WorldPop)
+        วิเคราะห์จุดที่ควรปลูกต้นไม้ในพื้นที่เป้าหมาย โดยถ่วงน้ำหนัก NDVI, อุณหภูมิผิวพื้น,
+        ความหนาแน่นของประชากร (WorldPop) และระยะถึงพื้นที่สีเขียวเดิม (การเข้าถึง)
       </p>
 
       <section className="section">
@@ -48,7 +51,7 @@ export default function RecommendTab({ data, handlers }) {
           <span className="section__title">น้ำหนักตัวแปร</span>
           <button
             className="btn--text"
-            onClick={() => setRecommendWeights({ ndvi: 0.40, lst: 0.30, pop: 0.30 })}
+            onClick={() => setRecommendWeights({ ...DEFAULT_WEIGHTS })}
           >รีเซ็ตค่า</button>
         </div>
         {WEIGHT_SLIDERS.map(({ key, label }) => (
@@ -96,10 +99,11 @@ export default function RecommendTab({ data, handlers }) {
               <span className="section__title">น้ำหนักที่ใช้จริง</span>
             </div>
             {[
-              { k: 'NDVI ต่ำ',        v: recommendData.weights.ndvi },
-              { k: 'LST สูง',         v: recommendData.weights.lst },
-              { k: 'ประชากรหนาแน่น',  v: recommendData.weights.population },
-            ].map(({ k, v }) => (
+              { k: 'NDVI ต่ำ',          v: recommendData.weights.ndvi },
+              { k: 'LST สูง',           v: recommendData.weights.lst },
+              { k: 'ประชากรหนาแน่น',    v: recommendData.weights.population },
+              { k: 'เข้าถึงสีเขียวยาก', v: recommendData.weights.access },
+            ].filter(({ v }) => v != null).map(({ k, v }) => (
               <div className="weight-row" key={k}>
                 <span className="weight-row__label" style={{ width: 110 }}>{k}</span>
                 <div className="score-bar">
@@ -108,6 +112,9 @@ export default function RecommendTab({ data, handlers }) {
                 <span className="weight-row__val">{(v * 100).toFixed(0)}%</span>
               </div>
             ))}
+            {recommendData.worldpop_year && (
+              <div className="helper">ประชากรอ้างอิง WorldPop ปี {recommendData.worldpop_year}</div>
+            )}
           </section>
 
           <section className="section">
@@ -164,8 +171,8 @@ export default function RecommendTab({ data, handlers }) {
 
       {!recommendData && !recommendLoading && (
         <Note label="หมายเหตุ">
-          ใช้สูตรถ่วงน้ำหนักจาก Sentinel-2 (NDVI), Landsat 8/9 (LST), WorldPop (ประชากร).
-          คะแนนสูง = ควรปลูกก่อน
+          ใช้สูตรถ่วงน้ำหนักจาก Sentinel-2 (NDVI), Landsat 8/9 (LST), WorldPop (ประชากร)
+          และ ESA WorldCover (ระยะถึงพื้นที่สีเขียว). คะแนนสูง = ควรปลูกก่อน
         </Note>
       )}
 

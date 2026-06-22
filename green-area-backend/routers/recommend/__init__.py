@@ -5,8 +5,8 @@ Re-export internal helpers ด้วยชื่อเดิม (`_normalize_wei
 """
 from .endpoints import router
 from .scoring import (
-    W_NDVI, W_LST, W_POP,
+    W_NDVI, W_LST, W_POP, W_ACCESS,
     normalize_weights as _normalize_weights,
 )
 
-__all__ = ["router", "_normalize_weights", "W_NDVI", "W_LST", "W_POP"]
+__all__ = ["router", "_normalize_weights", "W_NDVI", "W_LST", "W_POP", "W_ACCESS"]
