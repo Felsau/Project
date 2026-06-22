@@ -214,6 +214,19 @@ def compute_priority(geom: ee.Geometry, year: int,
     return priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable
 
 
+# ── Top-locations sampling ───────────────────────────────────────────────────
+# "Top N จุด" ต้องเป็น pixel priority สูงสุด *จริง* ของพื้นที่ ไม่ใช่ของ sample สุ่ม
+# เดิม: sample(numPixels=2000) สุ่มทั่ว geom แล้วค่อย sort → จังหวัดใหญ่ (หลายแสน
+# pixel ที่ 200 m) สุ่มไม่โดน hotspot จริง + ไม่มี seed = ผลต่างกันทุกครั้ง
+# แก้: หา threshold ที่เปอร์เซ็นไทล์สูง (เฉพาะ plantable) ก่อน → mask เหลือเฉพาะโซน
+# priority สูงสุด แล้วทุ่ม sample ลงตรงนั้น → จับ pixel สูงสุดจริงได้แม่นขึ้นมาก ·
+# พื้นที่เล็ก (numPixels > จำนวน pixel) จะ sample ได้เกือบครบ = เกือบ exhaustive ·
+# ใส่ seed คงที่ → top_locations ซ้ำได้ (deterministic)
+TOP_SAMPLE_PERCENTILE = 85    # คัดเฉพาะ priority เปอร์เซ็นไทล์ ≥ นี้ (top 15% ของ plantable)
+TOP_SAMPLE_NUM_PIXELS = 5000  # งบ sample หลัง mask โซน hotspot (เดิม 2000 ทั่วทั้ง geom)
+TOP_SAMPLE_SEED = 42          # คงที่ → ผลซ้ำได้ทุกครั้ง
+
+
 def get_top_locations(priority: ee.Image, ndvi_deficit: ee.Image,
                       lst_heat: ee.Image, pop_need: ee.Image, access_need: ee.Image,
                       geom: ee.Geometry, plantable: ee.Image, n: int = 10):
@@ -221,11 +234,29 @@ def get_top_locations(priority: ee.Image, ndvi_deficit: ee.Image,
 
     sample แบบ multi-band (priority + 4 องค์ประกอบ) ที่จุดเดียวกัน → คืน `factors`
     ของแต่ละจุด (ขาดต้นไม้/ร้อน/คนหนาแน่น/เข้าถึงสีเขียวยาก) เพื่ออธิบายว่า "ทำไม" จุดนี้
-    คะแนนสูง · updateMask(plantable) ก่อน sample → ไม่คืนจุดบนน้ำ/อาคาร/ป่าเดิม/ที่ชัน"""
+    คะแนนสูง · updateMask(plantable) ก่อน sample → ไม่คืนจุดบนน้ำ/อาคาร/ป่าเดิม/ที่ชัน
+
+    คัด priority เปอร์เซ็นไทล์สูง (TOP_SAMPLE_PERCENTILE) เฉพาะ plantable ก่อน sample
+    เพื่อทุ่ม budget ลงโซน hotspot จริง — เดิมสุ่มทั่ว geom ทำให้จังหวัดใหญ่พลาด pixel
+    สูงสุด (ดู comment บล็อกด้านบน)
+    """
+    # priority เฉพาะ pixel ที่ปลูกได้ — reduceRegion ข้าม pixel ที่ถูก mask อยู่แล้ว
+    # → percentile คิดบน distribution ของ "ที่ปลูกได้" เท่านั้น (ไม่ปนน้ำ/อาคาร/ป่าเดิม)
+    plantable_priority = priority.updateMask(plantable)
+    # threshold เป็น ee.Number lazy — fuse เข้า getInfo ก้อนเดียว ไม่เพิ่ม roundtrip ·
+    # null (ไม่มี pixel plantable เลย) → fallback 0 = ไม่ threshold (priority ≥ 0 เสมอ)
+    p_thresh = plantable_priority.reduceRegion(
+        reducer=ee.Reducer.percentile([TOP_SAMPLE_PERCENTILE]),
+        geometry=geom, scale=200, maxPixels=1e10, bestEffort=True).get('priority')
+    p_thresh = ee.Number(ee.Algorithms.If(p_thresh, p_thresh, 0))
+
     stack = priority.addBands([ndvi_deficit, lst_heat, pop_need, access_need])
-    samples = (stack.updateMask(plantable)
-               .sample(region=geom, scale=200, numPixels=2000,
-                       geometries=True, dropNulls=True)
+    # gte() สืบ mask ของ plantable_priority มาด้วย → updateMask ตัดทั้ง non-plantable
+    # และ pixel ที่ต่ำกว่า threshold ในคราวเดียว เหลือเฉพาะโซน hotspot ที่ปลูกได้
+    hotspots = stack.updateMask(plantable_priority.gte(p_thresh))
+    samples = (hotspots
+               .sample(region=geom, scale=200, numPixels=TOP_SAMPLE_NUM_PIXELS,
+                       seed=TOP_SAMPLE_SEED, geometries=True, dropNulls=True)
                .sort('priority', False)
                .limit(n))
     info = samples.getInfo()

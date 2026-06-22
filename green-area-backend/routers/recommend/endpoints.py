@@ -66,6 +66,20 @@ def _site_metrics(province_name: str, district_name: str | None, year: int):
     return _one(lst_table, "lst_mean"), _one(ndvi_table, "ndvi_mean")
 
 
+def _imagery_unavailable_error(year: int, district_name: str | None) -> HTTPException:
+    """HTTPException 422 มาตรฐานเมื่อ GEE คำนวณ priority ไม่สำเร็จ (ภาพถ่ายไม่ครอบคลุม).
+
+    ข้อความเดียวกันทุก path (province / district / custom-area / cache-refresh) กัน
+    drift — เดิม cache-refresh ไม่ดัก ee.EEException เลยคืน 500 generic ต่างจาก path
+    คำนวณสดที่คืน 422 + คำแนะนำให้เปลี่ยนปี
+    """
+    scope = "อำเภอนี้" if district_name else "พื้นที่นี้"
+    return HTTPException(status_code=422, detail=(
+        f"คำนวณ priority สำหรับปี {year} ไม่สำเร็จ — "
+        f"ข้อมูลภาพถ่ายดาวเทียมอาจไม่ครอบคลุม{scope} ลองปีก่อนหน้านี้"
+    ))
+
+
 def _run_recommendation(province_name: str, district_name: str | None,
                         raw_geom: dict, year: int,
                         w_ndvi: float, w_lst: float, w_pop: float, w_access: float):
@@ -131,11 +145,16 @@ def _run_recommendation(province_name: str, district_name: str | None,
                                 .update({"impact": impact}).eq("id", row["id"]).execute())
                         except Exception as cache_err:
                             logger.warning("⚠️  Impact back-fill failed (non-fatal): %s", cache_err)
+                except ee.EEException as ee_err:
+                    # คำนวณสดตอน refresh พลาด (asset edge case / all-masked) — คืน 422
+                    # + คำแนะนำเปลี่ยนปี ให้ตรงกับ path คำนวณสด ไม่ใช่ 500 generic
+                    logger.warning("⚠️  Recommend tile refresh GEE failed [%s/%d]: %s", label, year, ee_err)
+                    raise _imagery_unavailable_error(year, district_name)
                 except Exception:
                     logger.error("❌ Recommend tile refresh error [%s/%d]", label, year, exc_info=True)
                     raise internal_error()
-            return _base_response(tile_url=tile_url, top_locations=row["top_locations"],
-                                  impact=impact, from_cache=True, cached_at=row["created_at"])
+            return _base_response(tile_url=tile_url, top_locations=row.get("top_locations") or [],
+                                  impact=impact, from_cache=True, cached_at=row.get("created_at"))
 
     logger.info("⏳ Computing recommendation: %s/%d (w=%.2f/%.2f/%.2f/%.2f%s)",
                 label, year, w_ndvi, w_lst, w_pop, w_access, "" if is_default else " custom")
@@ -174,11 +193,7 @@ def _run_recommendation(province_name: str, district_name: str | None,
         # จับได้แค่ collection ว่างทั้งดุ้น แต่ image ที่ all-masked ก็ทำให้ getMapId
         # พังด้วย 'input may not be null' เช่นกัน → 422 + แนะนำให้เปลี่ยนปี
         logger.warning("⚠️  GEE compute failed [%s/%d]: %s", label, year, ee_err)
-        scope = "พื้นที่นี้" if district_name is None else "อำเภอนี้"
-        raise HTTPException(status_code=422, detail=(
-            f"คำนวณ priority สำหรับปี {year} ไม่สำเร็จ — "
-            f"ข้อมูลภาพถ่ายดาวเทียมอาจไม่ครอบคลุม{scope} ลองปีก่อนหน้านี้"
-        ))
+        raise _imagery_unavailable_error(year, district_name)
     except Exception:
         logger.error("❌ Recommend error [%s/%d]", label, year, exc_info=True)
         raise internal_error()
@@ -265,10 +280,8 @@ def recommend_custom_area(req: CustomAreaRecommendRequest):
         raise
     except ee.EEException as ee_err:
         logger.warning("⚠️ Custom-area recommend GEE failed (ปี %d): %s", req.year, ee_err)
-        raise HTTPException(status_code=422, detail=(
-            f"คำนวณ priority สำหรับปี {req.year} ไม่สำเร็จ — "
-            "ข้อมูลภาพถ่ายดาวเทียมอาจไม่ครอบคลุมพื้นที่นี้ ลองปีก่อนหน้า"
-        ))
+        # custom-area = polygon เดี่ยว ไม่มี district → scope "พื้นที่นี้"
+        raise _imagery_unavailable_error(req.year, None)
     except Exception:
         logger.error("❌ Custom-area recommend error (ปี %d)", req.year, exc_info=True)
         raise internal_error()

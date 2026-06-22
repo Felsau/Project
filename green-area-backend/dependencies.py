@@ -42,7 +42,10 @@ CURRENT_CACHE_VERSION = 2
 #          weights → priority/top_locations เปลี่ยน → row ที่ cache ด้วย v2 stale
 # v3 → v4: ปักหมุด scale ของ fastDistanceTransform (access_need) ให้ distance เป็นเมตรจริง
 #          ไม่เพี้ยนตาม scale → access_need (จึง priority/top_locations) ที่ cache ด้วย v3 stale
-RECOMMEND_CACHE_VERSION = 4
+# v4 → v5: top_locations เปลี่ยนวิธี sample — คัด priority เปอร์เซ็นไทล์สูง (เฉพาะ plantable)
+#          ก่อนแล้วทุ่ม sample ลงโซน hotspot + seed คงที่ (เดิมสุ่มทั่ว geom จับ pixel สูงสุด
+#          จริงพลาดในจังหวัดใหญ่) → top_locations ที่ cache ด้วย v4 ต่างไป → stale
+RECOMMEND_CACHE_VERSION = 5
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
