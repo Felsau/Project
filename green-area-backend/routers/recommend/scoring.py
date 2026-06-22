@@ -58,26 +58,36 @@ MAX_SLOPE_DEG = 30
 # ก่อน (ตรงกับภารกิจ m²/คน ตามมาตรฐาน WHO ของทั้งระบบ) · ใช้ ESA WorldCover class 10
 # (Tree cover) เป็น "พื้นที่สีเขียวเดิม" แล้ววัดระยะถึง pixel ต้นไม้ใกล้สุด
 ESA_TREE_COVER_CLASS = 10
-WORLDCOVER_SCALE_M = 10        # ความละเอียด WorldCover (เมตร/pixel)
+# Scale คงที่ที่ใช้คำนวณ distance transform (เมตร/pixel) — ดู docstring ว่าทำไมต้องปักหมุด
+ACCESS_DT_SCALE_M = 100.0
 # ไกลจากต้นไม้เกินระยะนี้ = ขาดแคลนพื้นที่สีเขียวเต็มที่ (access_need = 1) · 1 กม. ≈
 # ระยะเดินเข้าถึงสวน/ร่มไม้ที่เหมาะสมในเขตเมือง
 ACCESS_MAX_DIST_M = 1000.0
-# หน้าต่างค้นหา fastDistanceTransform (pixel) — ต้องคลุม ACCESS_MAX_DIST_M:
-# 256 px × 10 m = 2560 m > 1000 m → pixel ที่ไกลเกิน window ถูก clamp เป็น 1 อยู่แล้ว
-ACCESS_NEIGHBORHOOD_PX = 256
+# หน้าต่างค้นหา fastDistanceTransform (pixel ที่ ACCESS_DT_SCALE_M) — ต้องคลุมระยะ cap:
+# ACCESS_MAX_DIST_M / ACCESS_DT_SCALE_M = 10 px · 64 px × 100 m = 6.4 km >> 1 km เผื่อเหลือ
+ACCESS_NEIGHBORHOOD_PX = 64
 
 
 def access_need_image(geom: ee.Geometry) -> ee.Image:
     """access_need (0–1): ระยะถึงพื้นที่สีเขียวเดิม normalize แล้ว — ไกล = ค่าสูง = ขาดแคลน.
 
     ESA WorldCover class 10 (Tree cover) = พื้นที่สีเขียวเดิม · fastDistanceTransform
-    คืน squared distance (หน่วย pixel) ถึง non-zero (= ต้นไม้) ใกล้สุด → sqrt × scale
-    เป็นเมตร → normalize ด้วย ACCESS_MAX_DIST_M · pixel บนต้นไม้ = ระยะ 0 = need 0
+    คืน *squared* distance (หน่วย pixel) ถึง non-zero (= ต้นไม้) ใกล้สุด → sqrt = pixel.
+
+    สำคัญ: fastDistanceTransform คิดระยะเป็น "pixel" ของ projection ที่ EE เลือกตอน
+    compute (แปรตาม zoom ของ tile / scale ของ sample เช่น 200 m) — ไม่ใช่ 10 m native
+    ของ WorldCover · ถ้าไม่ปักหมุด การคูณ scale คงที่จะผิดและ access_need เพี้ยนตาม scale
+    (ที่ sample 200 m จะ ~0 แทบทั้งภาพ) · จึง reproject mask ไปกริดคงที่ ACCESS_DT_SCALE_M
+    ก่อน → pixel = 100 m เสมอ → คูณ 100 ได้เมตรจริง · pixel บนต้นไม้ = ระยะ 0 = need 0
     """
     wc = ee.ImageCollection("ESA/WorldCover/v200").first().clip(geom)
-    tree = wc.eq(ESA_TREE_COVER_CLASS)  # 1 = มีต้นไม้, 0 = ไม่มี (non-zero = แหล่งวัดระยะ)
+    # ปักหมุดกริดที่ ACCESS_DT_SCALE_M ให้ fastDistanceTransform คิดเป็น pixel 100 m คงที่
+    # (deterministic ทุก zoom/scale) · NOTE: reproject sample แบบ nearest อาจพลาดต้นไม้
+    # หย่อมเล็ก < 100 m → ประเมิน "ไกลจากสีเขียว" สูงไปเล็กน้อย (conservative)
+    proj = wc.projection().atScale(ACCESS_DT_SCALE_M)
+    tree = wc.eq(ESA_TREE_COVER_CLASS).reproject(proj)  # 1 = ต้นไม้, 0 = ไม่มี
     dist_m = (tree.fastDistanceTransform(ACCESS_NEIGHBORHOOD_PX).sqrt()
-              .multiply(WORLDCOVER_SCALE_M))
+              .multiply(ACCESS_DT_SCALE_M))
     return (dist_m.divide(ACCESS_MAX_DIST_M).clamp(0, 1)
             .unmask(0).rename('access_need'))
 

@@ -40,7 +40,9 @@ CURRENT_CACHE_VERSION = 2
 #          (heatmap ไม่เป็นรู) ทำให้ top_locations/impact ที่ cache ด้วย v1 ต่างไป → stale
 # v2 → v3: เพิ่มปัจจัยที่ 4 access_need (ระยะถึงพื้นที่สีเขียวเดิม) + rebalance default
 #          weights → priority/top_locations เปลี่ยน → row ที่ cache ด้วย v2 stale
-RECOMMEND_CACHE_VERSION = 3
+# v3 → v4: ปักหมุด scale ของ fastDistanceTransform (access_need) ให้ distance เป็นเมตรจริง
+#          ไม่เพี้ยนตาม scale → access_need (จึง priority/top_locations) ที่ cache ด้วย v3 stale
+RECOMMEND_CACHE_VERSION = 4
 MONTH_NAMES = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
                'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
