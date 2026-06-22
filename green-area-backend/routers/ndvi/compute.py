@@ -39,10 +39,12 @@ def compute_who_status(green_area_m2, population):
     if not population or not green_area_m2:
         return None, None
     m2_per_person = round(green_area_m2 / population, 2)
+    # แสดงด้วย .2f ให้ตรงกับความละเอียดที่ใช้ตัดสินผ่าน/ไม่ผ่าน — ถ้าใช้ .1f ค่าเช่น 8.96
+    # (ไม่ผ่าน) จะถูกปัดแสดงเป็น "9.0 m²/คน" คู่กับคำว่า "ต่ำกว่ามาตรฐาน" ดูย้อนแย้ง
     if m2_per_person >= WHO_STANDARD_M2:
-        status = f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.1f} m²/คน)"
+        status = f"ผ่านมาตรฐาน WHO ✅ ({m2_per_person:.2f} m²/คน)"
     else:
-        status = f"ต่ำกว่ามาตรฐาน WHO ⚠️ ({m2_per_person:.1f} m²/คน)"
+        status = f"ต่ำกว่ามาตรฐาน WHO ⚠️ ({m2_per_person:.2f} m²/คน)"
     return m2_per_person, status
 
 
