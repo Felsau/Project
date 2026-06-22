@@ -80,6 +80,27 @@ def _imagery_unavailable_error(year: int, district_name: str | None) -> HTTPExce
     ))
 
 
+def _compute_recommendation_payload(geom: ee.Geometry, year: int,
+                                    weights: tuple[float, float, float, float],
+                                    species: list):
+    """Shared compute: assert imagery → priority heatmap URL + top-10 + plantable impact.
+
+    คืน (tile_url, top_locations, impact) · เรียก *ภายใน* try ของ caller เพราะ
+    province/district (cache) กับ custom-area แปลง ee.EEException เป็น 422 ด้วยข้อความ
+    scope ต่างกัน — helper จึงไม่ดักเอง · รวม flow ที่เดิมเขียนซ้ำสองชุด (เดิมต่างกันแค่
+    geometry/response) ให้แก้ที่เดียวเวลา compute logic เปลี่ยน
+    """
+    assert_imagery_available(geom, year)
+    priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable = compute_priority(
+        geom, year, *weights)
+    tile_url = get_heatmap_url(priority)
+    top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, access_need,
+                            geom, plantable, n=10)
+    plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
+    impact = estimate_impact(plantable_m2, species)
+    return tile_url, top, impact
+
+
 def _run_recommendation(province_name: str, district_name: str | None,
                         raw_geom: dict, year: int,
                         w_ndvi: float, w_lst: float, w_pop: float, w_access: float):
@@ -160,14 +181,8 @@ def _run_recommendation(province_name: str, district_name: str | None,
                 label, year, w_ndvi, w_lst, w_pop, w_access, "" if is_default else " custom")
     try:
         geom = ee.Geometry(raw_geom)
-        assert_imagery_available(geom, year)
-        priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable = compute_priority(
-            geom, year, w_ndvi, w_lst, w_pop, w_access)
-        tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, access_need,
-                                geom, plantable, n=10)
-        plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
-        impact = estimate_impact(plantable_m2, species_info.get("species", []))
+        tile_url, top, impact = _compute_recommendation_payload(
+            geom, year, (w_ndvi, w_lst, w_pop, w_access), species_info.get("species", []))
 
         # Cache เฉพาะ default weights (ไม่งั้นจะปนกัน + DB บวมโดยเปล่าประโยชน์)
         if is_default:
@@ -256,14 +271,8 @@ def recommend_custom_area(req: CustomAreaRecommendRequest):
                 area_km2, req.year, w_ndvi, w_lst, w_pop, w_access)
     try:
         geom = ee.Geometry(req.geometry)
-        assert_imagery_available(geom, req.year)
-        priority, ndvi_deficit, lst_heat, pop_need, access_need, plantable = compute_priority(
-            geom, req.year, w_ndvi, w_lst, w_pop, w_access)
-        tile_url = get_heatmap_url(priority)
-        top = get_top_locations(priority, ndvi_deficit, lst_heat, pop_need, access_need,
-                                geom, plantable, n=10)
-        plantable_m2 = compute_plantable_area_m2(priority, plantable, geom)
-        impact = estimate_impact(plantable_m2, species_info.get("species", []))
+        tile_url, top, impact = _compute_recommendation_payload(
+            geom, req.year, (w_ndvi, w_lst, w_pop, w_access), species_info.get("species", []))
         return {
             "year": req.year,
             "area_km2": round(area_km2, 2),

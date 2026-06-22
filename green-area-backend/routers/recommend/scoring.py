@@ -7,8 +7,8 @@ import logging
 import ee
 from fastapi import HTTPException
 
-from dependencies import WORLDPOP_YEAR
-from gee_utils import clean_s2_collection, get_lst_col
+from dependencies import WORLDPOP_YEAR, worldpop_unavailable_error
+from gee_utils import clean_s2_collection, get_lst_col, worldpop_pop_collection
 from impact import IMPACT_DEFAULTS
 
 logger = logging.getLogger(__name__)
@@ -128,10 +128,7 @@ def assert_imagery_available(geom: ee.Geometry, year: int) -> None:
     # WorldPop: .first() คืน null ถ้าไม่เจอ THA+WORLDPOP_YEAR — pop_need กลายเป็น null
     # → ทั้ง priority image พัง getMapId ตอน 'Image.select: input may not be null'
     # ตรวจ size แทน .first() เพื่อจับ case นี้ก่อน compute
-    pop_size = (ee.ImageCollection('WorldPop/GP/100m/pop')
-                .filter(ee.Filter.eq('country', 'THA'))
-                .filter(ee.Filter.eq('year', WORLDPOP_YEAR))
-                .size())
+    pop_size = worldpop_pop_collection(WORLDPOP_YEAR).size()
     counts = ee.Dictionary({'s2': s2_size, 'lst': lst_size, 'pop': pop_size}).getInfo()
     missing = []
     if counts['s2'] == 0:
@@ -140,10 +137,7 @@ def assert_imagery_available(geom: ee.Geometry, year: int) -> None:
         missing.append(f"Landsat LST ปี {year}")
     if counts['pop'] == 0:
         # WorldPop ขาด = config issue ฝั่ง server ไม่ใช่เรื่องของปี → ข้อความต่างจาก S2/LST
-        raise HTTPException(status_code=503, detail=(
-            f"WorldPop ปี {WORLDPOP_YEAR} ไม่มีในระบบ — ตั้งค่า WORLDPOP_YEAR "
-            "เป็นปีที่มีข้อมูลใน GEE catalog (ปกติ 2000–2020)"
-        ))
+        raise worldpop_unavailable_error(WORLDPOP_YEAR)
     if missing:
         raise HTTPException(status_code=422, detail=(
             f"ยังไม่มีข้อมูล {' + '.join(missing)} เพียงพอ — ลองเลือกปีก่อนหน้านี้"
@@ -183,10 +177,7 @@ def compute_priority(geom: ee.Geometry, year: int,
                 .clamp(0, 1).unmask(0).rename('lst_heat'))
 
     # ── 3. Population (WorldPop) ────────────────────────────────
-    pop = (ee.ImageCollection('WorldPop/GP/100m/pop')
-           .filter(ee.Filter.eq('country', 'THA'))
-           .filter(ee.Filter.eq('year', WORLDPOP_YEAR))
-           .first())
+    pop = worldpop_pop_collection(WORLDPOP_YEAR).first()
     pop_img = ee.Image(pop).select('population').unmask(0)
     # Normalize ด้วย log base 1000 — สูตรคือ ln(pop+1) / ln(1000)
     # ผลลัพธ์: pop=1 → 0, pop=1000 → 1, ตัดที่ [0,1]

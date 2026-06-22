@@ -14,9 +14,9 @@ import ee
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from dependencies import (internal_error, CURRENT_YEAR,
+from dependencies import (internal_error, worldpop_unavailable_error, CURRENT_YEAR,
                           YEAR_MIN, YEAR_MAX, WORLDPOP_YEAR)
-from gee_utils import get_lst_col, reduce_lst
+from gee_utils import get_lst_col, reduce_lst, worldpop_pop_collection
 from polygon_utils import validate_drawn_polygon
 from routers.ndvi.compute import _compute_ndvi_annual, compute_who_status
 from schemas import CustomAreaResponse
@@ -38,14 +38,9 @@ def _population_in_geom(geom: ee.Geometry) -> int:
     เช็ค size ก่อนเหมือน urban.py — ถ้า WorldPop ไม่มีปีนี้ .first() = null →
     error คลุมเครือ ('input may not be null') · ตอบ 503 บอกวิธีแก้แทน
     """
-    pop_col = (ee.ImageCollection('WorldPop/GP/100m/pop')
-               .filter(ee.Filter.eq('country', 'THA'))
-               .filter(ee.Filter.eq('year', WORLDPOP_YEAR)))
+    pop_col = worldpop_pop_collection(WORLDPOP_YEAR)
     if pop_col.size().getInfo() == 0:
-        raise HTTPException(status_code=503, detail=(
-            f"WorldPop ปี {WORLDPOP_YEAR} ไม่มีในระบบ — ตั้งค่า WORLDPOP_YEAR "
-            "เป็นปีที่มีข้อมูลใน GEE catalog (ปกติ 2000–2020)"
-        ))
+        raise worldpop_unavailable_error(WORLDPOP_YEAR)
     pop = (ee.Image(pop_col.first()).select('population')
            .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,
                          scale=100, maxPixels=1e10, bestEffort=True)

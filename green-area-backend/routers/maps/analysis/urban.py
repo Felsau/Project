@@ -4,11 +4,11 @@ import logging
 import ee
 from fastapi import APIRouter, HTTPException
 
-from dependencies import (supa_call, internal_error,
+from dependencies import (supa_call, internal_error, worldpop_unavailable_error,
                           get_province_geom, get_district_geom,
                           CURRENT_YEAR, WHO_STANDARD_M2, CURRENT_CACHE_VERSION,
                           WORLDPOP_YEAR, YearParam)
-from gee_utils import clean_s2_collection
+from gee_utils import clean_s2_collection, worldpop_pop_collection
 
 # ESA WorldCover v200 class code (Built-up = สิ่งปลูกสร้าง/พื้นที่ urban)
 ESA_BUILTUP_CLASS = 50
@@ -120,14 +120,9 @@ def get_urban_subset(province_name: str, year: YearParam = CURRENT_YEAR,
         # ถ้าไม่มี image สำหรับ THA+ปีนี้ .first() = null → ee.Image(null) พังด้วย
         # error คลุมเครือ ('input may not be null') แล้วกลายเป็น 500 · เช็ค size
         # ก่อนเพื่อตอบ 503 ที่บอกวิธีแก้ (ตั้ง WORLDPOP_YEAR) เหมือนใน /recommend
-        pop_col = (ee.ImageCollection('WorldPop/GP/100m/pop')
-                   .filter(ee.Filter.eq('country', 'THA'))
-                   .filter(ee.Filter.eq('year', WORLDPOP_YEAR)))
+        pop_col = worldpop_pop_collection(WORLDPOP_YEAR)
         if pop_col.size().getInfo() == 0:
-            raise HTTPException(status_code=503, detail=(
-                f"WorldPop ปี {WORLDPOP_YEAR} ไม่มีในระบบ — ตั้งค่า WORLDPOP_YEAR "
-                "เป็นปีที่มีข้อมูลใน GEE catalog (ปกติ 2000–2020)"
-            ))
+            raise worldpop_unavailable_error(WORLDPOP_YEAR)
         pop_urban = (ee.Image(pop_col.first()).select('population')
                      .updateMask(built_up)
                      .reduceRegion(reducer=ee.Reducer.sum(), geometry=geom,

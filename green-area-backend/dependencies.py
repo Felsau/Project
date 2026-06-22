@@ -102,6 +102,18 @@ def internal_error(message: str = "เกิดข้อผิดพลาดภ
     return HTTPException(status_code=500, detail=message)
 
 
+def worldpop_unavailable_error(year: int = WORLDPOP_YEAR):
+    """HTTPException 503 มาตรฐานเมื่อ WorldPop ไม่มีปีที่ตั้งไว้ใน GEE catalog.
+
+    ข้อความเดียวกันทุก path (recommend / urban-subset / custom-area) กัน drift —
+    WorldPop ขาด = config issue ฝั่ง server (WORLDPOP_YEAR) ไม่ใช่เรื่องของปีที่ผู้ใช้ขอ
+    คู่กับ gee_utils.worldpop_pop_collection ที่ build collection"""
+    return HTTPException(status_code=503, detail=(
+        f"WorldPop ปี {year} ไม่มีในระบบ — ตั้งค่า WORLDPOP_YEAR "
+        "เป็นปีที่มีข้อมูลใน GEE catalog (ปกติ 2000–2020)"
+    ))
+
+
 def supa_call(builder_fn, retries: int = 1):
     """เรียก Supabase พร้อม retry เมื่อเจอ stale connection.
 

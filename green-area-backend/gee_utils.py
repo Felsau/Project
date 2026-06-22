@@ -65,6 +65,19 @@ def get_lst_col(geom, year: int, month: int = None):
            build('LANDSAT/LC09/C02/T1_L2'))
 
 
+def worldpop_pop_collection(year: int):
+    """WorldPop GP/100m/pop ของไทย (THA) ปีที่ระบุ — สร้าง filter country/year ที่เดียว.
+
+    ใช้ร่วม /recommend (scoring), /analysis/urban-subset, /analysis/custom-area
+    เพื่อกัน drift ของ filter · caller เช็ค .size() เองก่อน .first() เพราะถ้าไม่มี
+    ภาพสำหรับปีนี้ .first() = null → ee.Image(null) พังด้วย 'input may not be null'
+    (ดู worldpop_unavailable_error ใน dependencies สำหรับข้อความ 503 มาตรฐาน)
+    """
+    return (ee.ImageCollection('WorldPop/GP/100m/pop')
+            .filter(ee.Filter.eq('country', 'THA'))
+            .filter(ee.Filter.eq('year', year)))
+
+
 def reduce_lst(col, geom, scale):
     stats = (col.median()
                .reduceRegion(
