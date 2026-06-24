@@ -55,10 +55,10 @@
 }
 
 .loc-row {
-  display: grid;
-  grid-template-columns: 22px 1fr auto;
-  gap: var(--s-2);
-  align-items: baseline;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: 7px 0;
   border-bottom: 1px dotted var(--rule);
   font-size: var(--t-sm);

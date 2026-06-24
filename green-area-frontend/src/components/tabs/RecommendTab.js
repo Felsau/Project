@@ -140,7 +140,6 @@ export default function RecommendTab({ data, handlers }) {
                   href={`https://www.google.com/maps?q=${p.lat},${p.lng}`}
                   target="_blank" rel="noreferrer"
                   className="loc-row"
-                  style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="loc-row__rank">{String(i + 1).padStart(2, '0')}</span>
