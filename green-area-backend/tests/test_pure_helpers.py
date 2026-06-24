@@ -7,7 +7,8 @@ import pytest
 
 # Import จาก backend modules — conftest.py ตั้ง sys.path ให้แล้ว
 from routers.ndvi import _is_stale, compute_who_status
-from routers.recommend import _normalize_weights, W_NDVI, W_LST, W_POP, W_ACCESS
+from routers.recommend import (_normalize_weights, W_NDVI, W_LST, W_POP, W_ACCESS,
+                               _haversine_m, _space_out, TOP_MIN_SEPARATION_M)
 from routers.recommend import species as species_mod
 from routers.recommend.species import get_recommended_species
 from polygon_utils import (
@@ -143,6 +144,76 @@ class TestNormalizeWeights:
 
     def test_default_constants_sum_to_one(self):
         assert W_NDVI + W_LST + W_POP + W_ACCESS == pytest.approx(1.0)
+
+
+# ── _haversine_m (ระยะระหว่างจุดแนะนำ) ────────────────────────────────────────
+class TestHaversine:
+    def test_same_point_is_zero(self):
+        assert _haversine_m(13.5, 100.5, 13.5, 100.5) == pytest.approx(0.0, abs=1e-6)
+
+    def test_one_degree_latitude_is_about_111km(self):
+        # 1° latitude ≈ 111.2 km ทุกที่ (ไม่ขึ้นกับ longitude)
+        d = _haversine_m(13.0, 100.0, 14.0, 100.0)
+        assert d == pytest.approx(111_195, rel=0.001)
+
+    def test_symmetric(self):
+        a = _haversine_m(13.0, 100.0, 13.2, 100.3)
+        b = _haversine_m(13.2, 100.3, 13.0, 100.0)
+        assert a == pytest.approx(b)
+
+
+# ── _space_out (คัดจุดแนะนำไม่ให้กระจุกซ้อนกัน) ───────────────────────────────
+class TestSpaceOut:
+    @staticmethod
+    def _cand(score, lat, lng=100.0):
+        # candidates ต้องเรียง priority มาก→น้อยมาก่อน (เหมือนหลัง .sort ใน GEE)
+        return {'lat': lat, 'lng': lng, 'score': score, 'factors': {}}
+
+    def test_skips_near_duplicate_picks_far_point(self):
+        # 3 จุดติดกัน (≤~222m) + 1 จุดไกล (~2.2km) · min_sep 750m, n=2
+        cands = [
+            self._cand(0.9, 13.000), self._cand(0.8, 13.001),
+            self._cand(0.7, 13.002), self._cand(0.6, 13.020),
+        ]
+        out = _space_out(cands, n=2, min_sep_m=750)
+        assert [c['score'] for c in out] == [0.9, 0.6]   # จุดสูงสุด + จุดไกลถัดมา
+        assert out[1]['lat'] == 13.020
+
+    def test_well_separated_all_kept_and_respect_min_sep(self):
+        cands = [self._cand(0.9 - i * 0.1, 13.0 + i * 0.02) for i in range(4)]  # ~2.2km apart
+        out = _space_out(cands, n=4, min_sep_m=750)
+        assert len(out) == 4
+        for i in range(len(out)):
+            for j in range(i + 1, len(out)):
+                assert _haversine_m(out[i]['lat'], out[i]['lng'],
+                                    out[j]['lat'], out[j]['lng']) >= 750
+
+    def test_fills_to_n_when_all_clustered(self):
+        # ทุกจุดอยู่ใน ~111m → กระจายได้แค่ 1 จุด แต่ต้องเติมให้ครบ n ด้วยคะแนนสูงสุด
+        cands = [self._cand(0.9 - i * 0.1, 13.0 + i * 0.0005) for i in range(5)]
+        out = _space_out(cands, n=3, min_sep_m=750)
+        assert len(out) == 3
+        assert [c['score'] for c in out] == [0.9, 0.8, 0.7]   # top-3 by priority
+
+    def test_never_exceeds_n(self):
+        cands = [self._cand(0.9 - i * 0.05, 13.0 + i * 0.02) for i in range(10)]
+        assert len(_space_out(cands, n=3, min_sep_m=750)) == 3
+
+    def test_n_larger_than_pool_returns_all(self):
+        cands = [self._cand(0.9, 13.0), self._cand(0.8, 13.05)]
+        assert len(_space_out(cands, n=10, min_sep_m=750)) == 2
+
+    def test_empty_returns_empty(self):
+        assert _space_out([], n=5, min_sep_m=750) == []
+
+    def test_result_keeps_descending_priority_order(self):
+        cands = [self._cand(0.9 - i * 0.07, 13.0 + i * 0.02) for i in range(6)]
+        out = _space_out(cands, n=4, min_sep_m=750)
+        scores = [c['score'] for c in out]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_default_separation_is_positive(self):
+        assert TOP_MIN_SEPARATION_M > 0
 
 
 # ── _validate_geojson_path ────────────────────────────────────────────────────
