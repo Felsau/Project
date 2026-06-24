@@ -133,6 +133,8 @@ MANUAL_OVERRIDES = {
     ("Nakhon Ratchasima",   "muangyang"):         "เมืองยาง",
     ("Nakhon Ratchasima",   "khamthalaso"):       "ขามทะเลสอ",
     ("Nakhon Ratchasima",   "wangnumkhiaw"):      "วังน้ำเขียว",
+    # GADM spells it "NongBunnak"; kongvut has "Nong Bun Mak" — normalizers miss it.
+    ("Nakhon Ratchasima",   "nongbunnak"):        "หนองบุญมาก",
     ("Nakhon Sawan",        "latyao"):            "ลาดยาว",
     ("Nakhon Sawan",        "thatako"):           "ท่าตะโก",
     ("Nakhon Si Thammarat", "chulaphon"):         "จุฬาภรณ์",

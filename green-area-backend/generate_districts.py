@@ -39,6 +39,8 @@ CREATE TABLE district_ndvi_monthly (
 """
 import json
 import os
+import subprocess
+import sys
 
 import requests
 import ee
@@ -192,6 +194,16 @@ def try_gee_gaul() -> bool:
 # Run
 # ---------------------------------------------------------------------------
 if try_gadm_direct() or try_gee_gaul():
+    # GADM/GAUL carry English names only — immediately patch in Thai district
+    # names so on-map labels read in Thai ("เขตทุ่งครุ", not "Thungkru").
+    # Chained here so a regen can never silently drop name_th again.
+    print("⏳ Adding Thai district names (name_th) ...")
+    rc = subprocess.run(
+        [sys.executable, os.path.join(os.path.dirname(__file__), "add_district_th_names.py")]
+    ).returncode
+    if rc != 0:
+        print("  ⚠️  Thai-name patch failed — labels fall back to English. "
+              "Re-run `python add_district_th_names.py` once network is available.")
     print("Done. Restart the backend to load the new district boundaries.")
 else:
     print("❌ All strategies failed. Check your internet connection and try again.")

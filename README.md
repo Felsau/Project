@@ -63,7 +63,8 @@ copy .env.example .env
 # โหลด GEE credentials (ทำครั้งเดียว)
 earthengine authenticate
 
-# Generate ขอบเขตอำเภอ (ทำครั้งเดียว — สร้าง thailand_districts.json)
+# Generate ขอบเขตอำเภอ (ทำครั้งเดียว — สร้าง thailand_districts.json
+# พร้อมใส่ชื่ออำเภอภาษาไทย name_th ให้อัตโนมัติ เพื่อให้ป้ายบนแผนที่อ่านเป็นไทย)
 python generate_districts.py
 
 # Run
@@ -101,7 +102,8 @@ green-area-backend/
   main.py                  # FastAPI app + logging config + endpoint /compare /cache /ranking
   dependencies.py          # Supabase client, geometry loader, retry-on-disconnect
   gee_utils.py             # cloud mask, LST collection, reduce helpers
-  generate_districts.py    # one-time: สร้าง thailand_districts.json
+  generate_districts.py    # one-time: สร้าง thailand_districts.json (เรียก add_district_th_names.py ใส่ name_th อัตโนมัติ)
+  add_district_th_names.py # patch ชื่ออำเภอภาษาไทย (name_th) ลง thailand_districts.json
   migrations/              # SQL schema สำหรับ Supabase
   routers/
     ndvi/                  # /ndvi · /ndvi/{p}/monthly · district variants (endpoints.py + compute.py)
